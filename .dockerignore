@@ -1,0 +1,9 @@
+target/
+node_modules/
+data/
+dist/
+.git/
+*.log
+scripts/
+PRD.md
+README.md

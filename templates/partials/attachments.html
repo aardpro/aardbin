@@ -1,0 +1,16 @@
+{% for a in attachments %}
+<li class="flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-sm">
+  <span aria-hidden="true">📎</span>
+  <a href="/attachments/{{ a.id }}"
+     class="min-w-0 flex-1 truncate text-neutral-700 hover:underline">{{ a.original_filename }}</a>
+  <span class="shrink-0 text-xs text-neutral-400">{{ a.size_text }}</span>
+  <a href="/attachments/{{ a.id }}"
+     class="shrink-0 text-xs text-neutral-500 hover:underline">Download</a>
+  <button type="button"
+          hx-post="/records/{{ a.record_id }}/attachments/{{ a.id }}/delete"
+          hx-target="#attachment-list" hx-swap="innerHTML"
+          hx-confirm="Delete this attachment?"
+          class="shrink-0 rounded px-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600"
+          title="Delete attachment">&times;</button>
+</li>
+{% endfor %}

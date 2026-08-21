@@ -1,0 +1,13 @@
+{
+  "name": "aardbin-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Build-time only: Tailwind CSS compilation for aardbin. Not required at runtime.",
+  "scripts": {
+    "build:css": "tailwindcss -i styles/app.css -o static/app.css --minify"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.0",
+    "tailwindcss": "^4.1.0"
+  }
+}

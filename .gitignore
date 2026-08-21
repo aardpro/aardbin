@@ -1,0 +1,10 @@
+/target
+/node_modules
+/data
+*.log
+.env
+
+# deploy/: only the reference compose file is tracked.
+# Real data, .env secrets and image tarballs never belong in the repo.
+deploy/data/
+deploy/*.tar.gz
