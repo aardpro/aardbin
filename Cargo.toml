@@ -21,7 +21,7 @@ uuid = { version = "1", features = ["v4"] }
 minijinja = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-hmac = "0.12"
+hmac = "0.13"
 sha2 = "0.10"
 subtle = "2.6"
 time = { version = "0.3", features = ["formatting"] }
