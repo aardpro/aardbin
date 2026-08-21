@@ -6,10 +6,12 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      # Group all patch/minor updates into one PR
-      cargo-updates:
-        patterns:
-          - "*"
+      # Only auto-group safe patch/minor updates
+      cargo-patches:
+        update-types:
+          - "patch"
+          - "minor"
+    # Major version updates get individual PRs for manual review
 
   - package-ecosystem: npm
     directory: /
@@ -17,9 +19,10 @@ updates:
       interval: monthly
     open-pull-requests-limit: 3
     groups:
-      npm-updates:
-        patterns:
-          - "*"
+      npm-patches:
+        update-types:
+          - "patch"
+          - "minor"
 
   - package-ecosystem: github-actions
     directory: /
@@ -27,6 +30,7 @@ updates:
       interval: monthly
     open-pull-requests-limit: 3
     groups:
-      actions-updates:
-        patterns:
-          - "*"
+      actions-patches:
+        update-types:
+          - "patch"
+          - "minor"
