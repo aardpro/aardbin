@@ -34,7 +34,7 @@ jobs:
           cp target/x86_64-unknown-linux-musl/release/aardbin-cli release/aardbin-${{ github.ref_name }}/
           cp -r templates static release/aardbin-${{ github.ref_name }}/
           tar czf aardbin-${{ github.ref_name }}-x86_64-linux-musl.tar.gz -C release aardbin-${{ github.ref_name }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: musl-x86_64
           path: aardbin-*-x86_64-linux-musl.tar.gz
@@ -60,7 +60,7 @@ jobs:
           cp target/aarch64-unknown-linux-musl/release/aardbin-cli release/aardbin-${{ github.ref_name }}/
           cp -r templates static release/aardbin-${{ github.ref_name }}/
           tar czf aardbin-${{ github.ref_name }}-aarch64-linux-musl.tar.gz -C release aardbin-${{ github.ref_name }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: musl-aarch64
           path: aardbin-*-aarch64-linux-musl.tar.gz
