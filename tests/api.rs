@@ -6,10 +6,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::DefaultBodyLimit;
 use axum::extract::ConnectInfo;
-use axum::http::{header, Method, Request, StatusCode};
-use axum::routing::{get, post, delete};
+use axum::extract::DefaultBodyLimit;
+use axum::http::{header, Request, StatusCode};
+use axum::routing::get;
 use axum::Router;
 use serde_json::Value;
 use tower::ServiceExt;
@@ -19,7 +19,6 @@ use aardbin::config::Config;
 use aardbin::crypto::Crypto;
 use aardbin::db::Db;
 use aardbin::files::FileStore;
-use aardbin::guard::AuthState;
 use aardbin::ratelimit::LoginRateLimiter;
 use aardbin::render::Renderer;
 use aardbin::session::SessionManager;
@@ -50,7 +49,11 @@ async fn test_app() -> (Router, tempfile::TempDir) {
     let (events, _) = tokio::sync::broadcast::channel::<()>(16);
 
     let state = AppState {
-        sessions: Arc::new(SessionManager::new(&cfg.access_key, cfg.session_ttl, cfg.cookie_secure)),
+        sessions: Arc::new(SessionManager::new(
+            &cfg.access_key,
+            cfg.session_ttl,
+            cfg.cookie_secure,
+        )),
         crypto: Crypto::new(&cfg.crypto_key),
         limiter: Arc::new(LoginRateLimiter::new()),
         renderer: Renderer::new(&cfg.templates_dir),
@@ -61,9 +64,18 @@ async fn test_app() -> (Router, tempfile::TempDir) {
     };
 
     let app = Router::new()
-        .route("/api/records", get(aardbin::api::api_list_records).post(aardbin::api::api_create_record))
-        .route("/api/records/{id}", get(aardbin::api::api_get_record).delete(aardbin::api::api_delete_record))
-        .route("/api/attachments/{id}", get(aardbin::api::api_download_attachment))
+        .route(
+            "/api/records",
+            get(aardbin::api::api_list_records).post(aardbin::api::api_create_record),
+        )
+        .route(
+            "/api/records/{id}",
+            get(aardbin::api::api_get_record).delete(aardbin::api::api_delete_record),
+        )
+        .route(
+            "/api/attachments/{id}",
+            get(aardbin::api::api_download_attachment),
+        )
         .layer(DefaultBodyLimit::max(8 * 1024 * 1024))
         .with_state(state);
 
@@ -124,7 +136,12 @@ async fn api_list_empty() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body: Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap()).unwrap();
+    let body: Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), 1_000_000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(body["total"], 0);
     assert!(body["records"].as_array().unwrap().is_empty());
 }
@@ -134,7 +151,7 @@ async fn api_create_and_get() {
     let (app, _tmp) = test_app().await;
 
     // Create a record via multipart form
-    let form = reqwest::multipart::Form::new()
+    let _form = reqwest::multipart::Form::new()
         .text("title", "API Test")
         .text("content", "hello from api test");
     // We can't use reqwest in oneshot, so build the multipart body manually
@@ -154,21 +171,29 @@ hello from api test\r
             Request::post("/api/records")
                 .extension(test_addr())
                 .header(header::AUTHORIZATION, bearer("test-api-key-0123456789"))
-                .header(header::CONTENT_TYPE, format!("multipart/form-data; boundary={boundary}"))
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
                 .body(Body::from(body))
                 .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let created: Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap()).unwrap();
+    let created: Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), 1_000_000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     let id = created["id"].as_str().unwrap().to_string();
     assert!(!id.is_empty());
 
     // Get the record
     let resp = app
         .oneshot(
-            Request::get(&format!("/api/records/{id}"))
+            Request::get(format!("/api/records/{id}"))
                 .extension(test_addr())
                 .header(header::AUTHORIZATION, bearer("test-api-key-0123456789"))
                 .body(Body::empty())
@@ -177,7 +202,12 @@ hello from api test\r
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let record: Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap()).unwrap();
+    let record: Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), 1_000_000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(record["title"], "API Test");
     assert_eq!(record["content"], "hello from api test");
     assert_eq!(record["untitled"], false);
@@ -204,20 +234,28 @@ bye\r
             Request::post("/api/records")
                 .extension(test_addr())
                 .header(header::AUTHORIZATION, bearer("test-api-key-0123456789"))
-                .header(header::CONTENT_TYPE, format!("multipart/form-data; boundary={boundary}"))
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
                 .body(Body::from(body))
                 .unwrap(),
         )
         .await
         .unwrap();
-    let created: Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap()).unwrap();
+    let created: Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), 1_000_000)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     let id = created["id"].as_str().unwrap();
 
     // Delete
     let resp = app
         .clone()
         .oneshot(
-            Request::delete(&format!("/api/records/{id}"))
+            Request::delete(format!("/api/records/{id}"))
                 .extension(test_addr())
                 .header(header::AUTHORIZATION, bearer("test-api-key-0123456789"))
                 .body(Body::empty())
@@ -230,7 +268,7 @@ bye\r
     // Verify gone
     let resp = app
         .oneshot(
-            Request::get(&format!("/api/records/{id}"))
+            Request::get(format!("/api/records/{id}"))
                 .extension(test_addr())
                 .header(header::AUTHORIZATION, bearer("test-api-key-0123456789"))
                 .body(Body::empty())
@@ -252,7 +290,10 @@ async fn api_rate_limit_returns_429_with_retry_after() {
             .oneshot(
                 Request::get("/api/records")
                     .extension(test_addr())
-                    .header(header::AUTHORIZATION, bearer("wrong-key-wrong-key-wrong-key"))
+                    .header(
+                        header::AUTHORIZATION,
+                        bearer("wrong-key-wrong-key-wrong-key"),
+                    )
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -263,7 +304,10 @@ async fn api_rate_limit_returns_429_with_retry_after() {
         .oneshot(
             Request::get("/api/records")
                 .extension(test_addr())
-                .header(header::AUTHORIZATION, bearer("wrong-key-wrong-key-wrong-key"))
+                .header(
+                    header::AUTHORIZATION,
+                    bearer("wrong-key-wrong-key-wrong-key"),
+                )
                 .body(Body::empty())
                 .unwrap(),
         )

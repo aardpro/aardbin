@@ -50,9 +50,7 @@ impl Renderer {
                 AutoEscape::None
             }
         });
-        env.add_function("t", move |key: String| {
-            i18n::t(lang, &key)
-        });
+        env.add_function("t", move |key: String| i18n::t(lang, &key));
     }
 
     /// Render a template using the environment for `lang`.
@@ -142,10 +140,7 @@ mod tests {
             display_title("", "first line\nsecond", lang),
             ("first line".into(), false)
         );
-        assert_eq!(
-            display_title("", "  \n  ", lang),
-            ("Untitled".into(), true)
-        );
+        assert_eq!(display_title("", "  \n  ", lang), ("Untitled".into(), true));
         assert_eq!(display_title("  ", "", lang), ("Untitled".into(), true));
     }
 

@@ -11,7 +11,11 @@ use std::io::Read;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "aardbin-cli", version = "1.0.0", about = "CLI client for aardbin")]
+#[command(
+    name = "aardbin-cli",
+    version = "1.0.0",
+    about = "CLI client for aardbin"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -252,7 +256,12 @@ struct ApiError {
 // Command implementations
 // ---------------------------------------------------------------------------
 
-async fn cmd_paste(c: &Client, title: Option<String>, content: Option<String>, files: &[PathBuf]) -> Result<()> {
+async fn cmd_paste(
+    c: &Client,
+    title: Option<String>,
+    content: Option<String>,
+    files: &[PathBuf],
+) -> Result<()> {
     let body_content = match content {
         Some(c) => c,
         None => {
@@ -267,14 +276,19 @@ async fn cmd_paste(c: &Client, title: Option<String>, content: Option<String>, f
         .text("content", body_content);
 
     for f in files {
-        let filename = f.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let filename = f
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         let data = tokio::fs::read(f).await?;
-        let part = reqwest::multipart::Part::bytes(data)
-            .file_name(filename);
+        let part = reqwest::multipart::Part::bytes(data).file_name(filename);
         form = form.part("files", part);
     }
 
-    let req = c.http.post(format!("{}/api/records", c.base_url))
+    let req = c
+        .http
+        .post(format!("{}/api/records", c.base_url))
         .multipart(form)
         .build()?;
     let resp = c.send_with_retry(req).await?;
@@ -283,7 +297,9 @@ async fn cmd_paste(c: &Client, title: Option<String>, content: Option<String>, f
         let created: ApiCreated = resp.json().await?;
         println!("{}", created.id);
     } else {
-        let err: ApiError = resp.json().await.unwrap_or(ApiError { error: format!("HTTP {status}") });
+        let err: ApiError = resp.json().await.unwrap_or(ApiError {
+            error: format!("HTTP {status}"),
+        });
         bail!("{}", err.error);
     }
     Ok(())
@@ -296,23 +312,38 @@ async fn cmd_list(c: &Client, page: i64, page_size: Option<i64>) -> Result<()> {
     }
     let resp = c.http.get(&url).send().await?;
     if !resp.status().is_success() {
-        let err: ApiError = resp.json().await.unwrap_or(ApiError { error: "request failed".into() });
+        let err: ApiError = resp.json().await.unwrap_or(ApiError {
+            error: "request failed".into(),
+        });
         bail!("{}", err.error);
     }
     let list: ApiListResponse = resp.json().await?;
     for r in &list.records {
         let title = if r.untitled { "(untitled)" } else { &r.title };
-        let att = if r.attachment_count > 0 { format!(" 📎×{}", r.attachment_count) } else { String::new() };
+        let att = if r.attachment_count > 0 {
+            format!(" 📎×{}", r.attachment_count)
+        } else {
+            String::new()
+        };
         println!("{}  {}{}  {}", r.id, title, att, r.snippet);
     }
-    eprintln!("Page {}/{} · {} records", list.page, list.total_pages, list.total);
+    eprintln!(
+        "Page {}/{} · {} records",
+        list.page, list.total_pages, list.total
+    );
     Ok(())
 }
 
 async fn cmd_get(c: &Client, id: &str) -> Result<()> {
-    let resp = c.http.get(format!("{}/api/records/{id}", c.base_url)).send().await?;
+    let resp = c
+        .http
+        .get(format!("{}/api/records/{id}", c.base_url))
+        .send()
+        .await?;
     if !resp.status().is_success() {
-        let err: ApiError = resp.json().await.unwrap_or(ApiError { error: "request failed".into() });
+        let err: ApiError = resp.json().await.unwrap_or(ApiError {
+            error: "request failed".into(),
+        });
         bail!("{}", err.error);
     }
     let record: ApiRecord = resp.json().await?;
@@ -325,7 +356,10 @@ async fn cmd_get(c: &Client, id: &str) -> Result<()> {
     if !record.attachments.is_empty() {
         println!("Attachments:");
         for a in &record.attachments {
-            println!("  {} ({} bytes) — {}", a.id, a.size_bytes, a.original_filename);
+            println!(
+                "  {} ({} bytes) — {}",
+                a.id, a.size_bytes, a.original_filename
+            );
         }
     }
     println!("---");
@@ -334,11 +368,17 @@ async fn cmd_get(c: &Client, id: &str) -> Result<()> {
 }
 
 async fn cmd_delete(c: &Client, id: &str) -> Result<()> {
-    let resp = c.http.delete(format!("{}/api/records/{id}", c.base_url)).send().await?;
+    let resp = c
+        .http
+        .delete(format!("{}/api/records/{id}", c.base_url))
+        .send()
+        .await?;
     if resp.status().is_success() {
         println!("Deleted {id}");
     } else {
-        let err: ApiError = resp.json().await.unwrap_or(ApiError { error: "request failed".into() });
+        let err: ApiError = resp.json().await.unwrap_or(ApiError {
+            error: "request failed".into(),
+        });
         bail!("{}", err.error);
     }
     Ok(())
@@ -346,22 +386,37 @@ async fn cmd_delete(c: &Client, id: &str) -> Result<()> {
 
 async fn cmd_upload(c: &Client, record_id: &str, file: &PathBuf) -> Result<()> {
     // Get existing record, re-create with additional attachment
-    let resp = c.http.get(format!("{}/api/records/{record_id}", c.base_url)).send().await?;
+    let resp = c
+        .http
+        .get(format!("{}/api/records/{record_id}", c.base_url))
+        .send()
+        .await?;
     if !resp.status().is_success() {
-        let err: ApiError = resp.json().await.unwrap_or(ApiError { error: "record not found".into() });
+        let err: ApiError = resp.json().await.unwrap_or(ApiError {
+            error: "record not found".into(),
+        });
         bail!("{}", err.error);
     }
     let record: ApiRecord = resp.json().await?;
 
-    let filename = file.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let filename = file
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let data = tokio::fs::read(file).await?;
 
     let form = reqwest::multipart::Form::new()
         .text("title", record.title)
         .text("content", record.content)
-        .part("files", reqwest::multipart::Part::bytes(data).file_name(filename));
+        .part(
+            "files",
+            reqwest::multipart::Part::bytes(data).file_name(filename),
+        );
 
-    let req = c.http.post(format!("{}/api/records", c.base_url))
+    let req = c
+        .http
+        .post(format!("{}/api/records", c.base_url))
         .multipart(form)
         .build()?;
     let resp = c.send_with_retry(req).await?;
@@ -370,16 +425,24 @@ async fn cmd_upload(c: &Client, record_id: &str, file: &PathBuf) -> Result<()> {
         let created: ApiCreated = resp.json().await?;
         println!("Created new record {} with attachment (API does not support adding to existing record)", created.id);
     } else {
-        let err: ApiError = resp.json().await.unwrap_or(ApiError { error: format!("HTTP {status}") });
+        let err: ApiError = resp.json().await.unwrap_or(ApiError {
+            error: format!("HTTP {status}"),
+        });
         bail!("{}", err.error);
     }
     Ok(())
 }
 
 async fn cmd_download(c: &Client, id: &str, output: Option<PathBuf>) -> Result<()> {
-    let resp = c.http.get(format!("{}/api/attachments/{id}", c.base_url)).send().await?;
+    let resp = c
+        .http
+        .get(format!("{}/api/attachments/{id}", c.base_url))
+        .send()
+        .await?;
     if !resp.status().is_success() {
-        let err: ApiError = resp.json().await.unwrap_or(ApiError { error: "attachment not found".into() });
+        let err: ApiError = resp.json().await.unwrap_or(ApiError {
+            error: "attachment not found".into(),
+        });
         bail!("{}", err.error);
     }
     let bytes = resp.bytes().await?;
@@ -399,7 +462,9 @@ async fn cmd_download(c: &Client, id: &str, output: Option<PathBuf>) -> Result<(
 // Minimal atty check (avoid adding atty crate)
 // ---------------------------------------------------------------------------
 mod atty {
-    pub enum Stream { Stdin }
+    pub enum Stream {
+        Stdin,
+    }
     pub fn is(_stream: Stream) -> bool {
         // Simple heuristic: if stdin is a terminal
         unsafe { libc_isatty(0) != 0 }
@@ -422,7 +487,11 @@ async fn main() -> Result<()> {
     let client = Client::new(&base_url, &access_key)?;
 
     match cli.cmd {
-        Cmd::Paste { title, content, file } => cmd_paste(&client, title, content, &file).await,
+        Cmd::Paste {
+            title,
+            content,
+            file,
+        } => cmd_paste(&client, title, content, &file).await,
         Cmd::List { page, page_size } => cmd_list(&client, page, page_size).await,
         Cmd::Get { id } => cmd_get(&client, &id).await,
         Cmd::Delete { id } => cmd_delete(&client, &id).await,

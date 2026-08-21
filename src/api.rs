@@ -45,7 +45,10 @@ pub struct ApiAuth;
 impl FromRequestParts<AppState> for ApiAuth {
     type Rejection = Response;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let ConnectInfo(addr) = parts
             .extract::<ConnectInfo<SocketAddr>>()
             .await
@@ -252,11 +255,7 @@ pub async fn api_create_record(
     }
 
     let _ = s.events.send(());
-    (
-        StatusCode::CREATED,
-        Json(ApiCreatedResponse { id }),
-    )
-        .into_response()
+    (StatusCode::CREATED, Json(ApiCreatedResponse { id })).into_response()
 }
 
 /// GET /api/records — list records (JSON, paginated).
@@ -296,8 +295,7 @@ pub async fn api_list_records(
             let atts = by_record.remove(&r.id).unwrap_or_default();
             match s.crypto.decrypt(&r.blob) {
                 Ok((title, content)) => {
-                    let (title, untitled) =
-                        display_title(&title, &content, crate::i18n::Lang::En);
+                    let (title, untitled) = display_title(&title, &content, crate::i18n::Lang::En);
                     ApiRecordSummary {
                         id: r.id,
                         title,

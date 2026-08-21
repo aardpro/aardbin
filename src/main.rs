@@ -11,7 +11,6 @@ use tokio::sync::broadcast;
 use tower_http::services::ServeDir;
 use tracing_subscriber::EnvFilter;
 
-use aardbin::*;
 use aardbin::config::Config;
 use aardbin::crypto::Crypto;
 use aardbin::db::Db;
@@ -20,6 +19,7 @@ use aardbin::guard::AuthState;
 use aardbin::ratelimit::LoginRateLimiter;
 use aardbin::render::Renderer;
 use aardbin::session::SessionManager;
+use aardbin::*;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -93,8 +93,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/logout", post(routes::post_logout))
         .route("/lang", post(routes::post_lang))
         // JSON API (E1)
-        .route("/api/records", get(api::api_list_records).post(api::api_create_record))
-        .route("/api/records/{id}", get(api::api_get_record).delete(api::api_delete_record))
+        .route(
+            "/api/records",
+            get(api::api_list_records).post(api::api_create_record),
+        )
+        .route(
+            "/api/records/{id}",
+            get(api::api_get_record).delete(api::api_delete_record),
+        )
         .route("/api/attachments/{id}", get(api::api_download_attachment))
         .nest_service("/static", ServeDir::new(cfg.static_dir.clone()))
         .merge(protected)

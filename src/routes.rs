@@ -168,7 +168,10 @@ pub async fn post_login(
             error: Some(i18n::t(lang, "rate.too_many")),
         };
         // Do simple substitution for {minutes} and {plural}
-        let error_msg = view.error.as_ref().unwrap()
+        let error_msg = view
+            .error
+            .as_ref()
+            .unwrap()
             .replace("{minutes}", &minutes.to_string())
             .replace("{plural}", plural);
         let view = LoginView {
@@ -181,9 +184,7 @@ pub async fn post_login(
             .unwrap_or_else(|_| "Too many attempts".into());
         return (
             StatusCode::TOO_MANY_REQUESTS,
-            [
-                (header::RETRY_AFTER, format!("{}", remaining.as_secs())),
-            ],
+            [(header::RETRY_AFTER, format!("{}", remaining.as_secs()))],
             Html(html),
         )
             .into_response();
@@ -232,10 +233,7 @@ pub struct LangForm {
     lang: String,
 }
 
-pub async fn post_lang(
-    headers: HeaderMap,
-    Form(form): Form<LangForm>,
-) -> Response {
+pub async fn post_lang(headers: HeaderMap, Form(form): Form<LangForm>) -> Response {
     let lang_val = match form.lang.as_str() {
         "zh" => "zh",
         _ => "en",
@@ -295,10 +293,7 @@ async fn build_list_view(s: &AppState, page: i64, lang: Lang) -> anyhow::Result<
                 .first()
                 .map(|a| a.original_filename.clone())
                 .unwrap_or_default();
-            let first_attachment_id = atts
-                .first()
-                .map(|a| a.id.clone())
-                .unwrap_or_default();
+            let first_attachment_id = atts.first().map(|a| a.id.clone()).unwrap_or_default();
 
             match s.crypto.decrypt(&r.blob) {
                 Ok((title, content)) => {
@@ -636,7 +631,11 @@ pub async fn create_record(
     (StatusCode::NO_CONTENT, [("HX-Redirect", "/")]).into_response()
 }
 
-pub async fn edit_form(State(s): State<AppState>, Path(id): Path<String>, headers: HeaderMap) -> Response {
+pub async fn edit_form(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
     let lang = detect_lang(&headers);
     let row = match s.db.get_record(&id).await {
         Ok(Some(r)) => r,
@@ -842,13 +841,14 @@ pub async fn delete_attachment(
         lang: String,
         attachments: Vec<AttachmentView>,
     }
-    match s
-        .renderer
-        .render_lang(lang, "partials/attachments.html", &Ctx {
+    match s.renderer.render_lang(
+        lang,
+        "partials/attachments.html",
+        &Ctx {
             lang: lang.as_str().to_string(),
             attachments: views,
-        })
-    {
+        },
+    ) {
         Ok(html) => Html(html).into_response(),
         Err(e) => internal(e.into()),
     }

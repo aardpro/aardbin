@@ -44,7 +44,11 @@ pub fn t(lang: Lang, key: &str) -> String {
             );
             return v.to_string();
         }
-        tracing::warn!(lang = lang.as_str(), key, "i18n key missing in all languages");
+        tracing::warn!(
+            lang = lang.as_str(),
+            key,
+            "i18n key missing in all languages"
+        );
     }
     key.to_string()
 }
@@ -73,7 +77,12 @@ pub fn resolve(cookie_val: Option<&str>, accept_lang: Option<&str>) -> Lang {
     // 2. Accept-Language first token
     if let Some(al) = accept_lang {
         for part in al.split(',') {
-            let tag = part.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+            let tag = part
+                .split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase();
             if tag.starts_with("zh") {
                 return Lang::Zh;
             }
@@ -129,7 +138,10 @@ static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     m.insert("records.more_files", "{n} more");
     m.insert("records.prev", "← Prev");
     m.insert("records.next", "Next →");
-    m.insert("records.page_info", "Page {page} / {total_pages} · {total} records");
+    m.insert(
+        "records.page_info",
+        "Page {page} / {total_pages} · {total} records",
+    );
     // -- form.html --
     m.insert("form.title_label", "Title");
     m.insert("form.title_placeholder", "Optional title");
@@ -224,10 +236,7 @@ static ZH: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     m.insert("js.exceeds_max", "超过最大");
     m.insert("js.skipped", "已跳过");
     // -- rate limit --
-    m.insert(
-        "rate.too_many",
-        "尝试次数过多，请在 {minutes} 分钟后重试。",
-    );
+    m.insert("rate.too_many", "尝试次数过多，请在 {minutes} 分钟后重试。");
     m
 });
 
@@ -306,10 +315,7 @@ mod tests {
 
     #[test]
     fn resolve_accept_language() {
-        assert_eq!(
-            resolve(None, Some("zh-CN,zh;q=0.9,en;q=0.8")),
-            Lang::Zh
-        );
+        assert_eq!(resolve(None, Some("zh-CN,zh;q=0.9,en;q=0.8")), Lang::Zh);
         assert_eq!(resolve(None, Some("en-US,en;q=0.9")), Lang::En);
     }
 
