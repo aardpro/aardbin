@@ -62,6 +62,7 @@ struct RecordView {
     updated_text: String,
     attachment_count: i64,
     first_attachment_name: String,
+    first_attachment_id: String,
     extra_attachments: i64,
     undecryptable: bool,
 }
@@ -294,6 +295,10 @@ async fn build_list_view(s: &AppState, page: i64, lang: Lang) -> anyhow::Result<
                 .first()
                 .map(|a| a.original_filename.clone())
                 .unwrap_or_default();
+            let first_attachment_id = atts
+                .first()
+                .map(|a| a.id.clone())
+                .unwrap_or_default();
 
             match s.crypto.decrypt(&r.blob) {
                 Ok((title, content)) => {
@@ -307,6 +312,7 @@ async fn build_list_view(s: &AppState, page: i64, lang: Lang) -> anyhow::Result<
                         updated_text: format_ts_utc(r.updated_at),
                         attachment_count,
                         first_attachment_name,
+                        first_attachment_id,
                         extra_attachments: (attachment_count - 1).max(0),
                         undecryptable: false,
                     }
@@ -320,6 +326,7 @@ async fn build_list_view(s: &AppState, page: i64, lang: Lang) -> anyhow::Result<
                     updated_text: format_ts_utc(r.updated_at),
                     attachment_count,
                     first_attachment_name,
+                    first_attachment_id,
                     extra_attachments: (attachment_count - 1).max(0),
                     undecryptable: true,
                 },

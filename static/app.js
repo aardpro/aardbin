@@ -53,11 +53,14 @@
   }
 
   // ---------- copy (SPEC §15) ----------
+  // Clicking [data-copy] (legacy button) or [data-copy-content] (content area)
+  // fetches the record's plaintext and writes it to the clipboard.
   document.addEventListener("click", async (e) => {
-    const btn = e.target.closest("[data-copy]");
+    const btn = e.target.closest("[data-copy]") || e.target.closest("[data-copy-content]");
     if (!btn) return;
+    const id = btn.dataset.copy || btn.dataset.copyContent;
     try {
-      const resp = await fetch(`/records/${btn.dataset.copy}/copy`, {
+      const resp = await fetch(`/records/${id}/copy`, {
         credentials: "same-origin",
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);

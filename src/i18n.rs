@@ -125,6 +125,8 @@ static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     m.insert("records.edit", "Edit");
     m.insert("records.delete", "Delete");
     m.insert("records.delete_confirm", "Delete this record?");
+    m.insert("records.one_file", "1 file");
+    m.insert("records.more_files", "{n} more");
     m.insert("records.prev", "← Prev");
     m.insert("records.next", "Next →");
     m.insert("records.page_info", "Page {page} / {total_pages} · {total} records");
@@ -186,6 +188,8 @@ static ZH: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     m.insert("records.edit", "编辑");
     m.insert("records.delete", "删除");
     m.insert("records.delete_confirm", "确定删除此记录？");
+    m.insert("records.one_file", "1 个文件");
+    m.insert("records.more_files", "还有 {n} 个");
     m.insert("records.prev", "← 上页");
     m.insert("records.next", "下页 →");
     m.insert(
@@ -249,6 +253,8 @@ pub fn all_keys() -> &'static [&'static str] {
         "records.edit",
         "records.delete",
         "records.delete_confirm",
+        "records.one_file",
+        "records.more_files",
         "records.prev",
         "records.next",
         "records.page_info",

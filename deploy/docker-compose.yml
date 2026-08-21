@@ -3,11 +3,11 @@
 # 在远程服务器上(无源码、无构建工具链),按以下步骤运行:
 #
 #   1. 在构建机打包镜像并随本目录一起上传:
-#        docker save aardbin:1.0.0 | gzip > aardbin-1.0.0.tar.gz
-#        scp aardbin-1.0.0.tar.gz docker-compose.yml .env user@server:~/aardbin/
+#        docker save aardbin:latest | gzip > aardbin-latest.tar.gz
+#        scp aardbin-latest.tar.gz docker-compose.yml .env user@server:~/aardbin/
 #
 #   2. 服务器上导入镜像并启动:
-#        gunzip -c aardbin-1.0.0.tar.gz | docker load
+#        gunzip -c aardbin-latest.tar.gz | docker load
 #        cd ~/aardbin && docker compose up -d
 #
 #   3. 打开 http://<server-ip>:8080,输入 .env 中的 ACCESS_KEY 登录。
@@ -17,11 +17,11 @@
 
 services:
   aardbin:
-    image: aardbin:1.0.0
+    image: aardbin:latest
     pull_policy: never          # 镜像来自 docker load,不从 registry 拉取
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${PORT:-8091}:8080"
     env_file: .env
     volumes:
       - ./data:/app/data         # 全部持久化数据所在目录(SPEC §34,备份即打包此目录)

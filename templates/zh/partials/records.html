@@ -12,39 +12,37 @@
   <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
     {% for r in records %}
     <article class="flex flex-col rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
-      <div class="min-w-0 flex-1">
+      {# ── Title row ── #}
+      <div class="flex items-center gap-2">
         {% if r.undecryptable %}
-        <h2 class="truncate text-[15px] font-medium text-amber-600">{{ t("records.undecryptable") }}</h2>
+        <div class="min-w-0 flex-1 truncate text-[15px] font-medium text-amber-600">{{ t("records.undecryptable") }}</div>
         {% else %}
-        <h2 class="truncate text-[15px] font-medium{% if r.untitled %} italic text-neutral-400{% endif %}">{{ r.title }}</h2>
+        <a href="/records/{{ r.id }}/edit" class="record-title min-w-0 flex-1 truncate text-[15px] font-medium underline{% if r.untitled %} italic text-neutral-400{% endif %}">{{ r.title }}</a>
         {% endif %}
-        <time class="text-xs text-neutral-500" data-ts="{{ r.updated_ts }}"
-              datetime="{{ r.updated_text }}">{{ r.updated_text }}</time>
-        {% if r.snippet %}
-        <p class="mt-1 line-clamp-2 break-words text-sm text-neutral-600">{{ r.snippet }}</p>
+        {% if not r.undecryptable %}
+        <button type="button"
+                hx-post="/records/{{ r.id }}/delete" hx-swap="none"
+                hx-confirm="{{ t('records.delete_confirm') }}"
+                class="shrink-0 rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 cursor-pointer">{{ t("records.delete") }}</button>
         {% endif %}
       </div>
-      <div class="mt-2 flex items-center justify-between gap-2 border-t border-neutral-100 pt-2">
-        {% if r.attachment_count > 0 %}
-        <p class="min-w-0 truncate text-xs text-neutral-500">
-          📎 {{ r.first_attachment_name }}{% if r.extra_attachments > 0 %} <span class="text-neutral-400">+{{ r.extra_attachments }}</span>{% endif %}
-        </p>
-        {% else %}
-        <span></span>
-        {% endif %}
-        <div class="flex shrink-0 items-center gap-1">
-          {% if not r.undecryptable %}
-          <button type="button" data-copy="{{ r.id }}"
-                  class="rounded px-2.5 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-100 min-h-[44px]">{{ t("records.copy") }}</button>
-          <a href="/records/{{ r.id }}/edit"
-             class="rounded px-2.5 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-100 min-h-[44px] flex items-center">{{ t("records.edit") }}</a>
-          {% endif %}
-          <button type="button"
-                  hx-post="/records/{{ r.id }}/delete" hx-swap="none"
-                  hx-confirm="{{ t('records.delete_confirm') }}"
-                  class="rounded px-2.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50 min-h-[44px]">{{ t("records.delete") }}</button>
-        </div>
+      {# ── Time + content (click to copy) ── #}
+      <time class="mt-0.5 text-xs text-neutral-500" data-ts="{{ r.updated_ts }}"
+            datetime="{{ r.updated_text }}">{{ r.updated_text }}</time>
+      {% if r.snippet and not r.undecryptable %}
+      <div data-copy-content="{{ r.id }}" class="record-content mt-1 line-clamp-2 break-words text-sm text-neutral-600 cursor-pointer select-none">{{ r.snippet }}</div>
+      {% elif r.snippet %}
+      <p class="mt-1 line-clamp-2 break-words text-sm text-neutral-600">{{ r.snippet }}</p>
+      {% endif %}
+      {# ── Attachments ── #}
+      {% if r.attachment_count > 0 %}
+      <div class="mt-2 flex items-center gap-2 border-t border-neutral-100 pt-2">
+        <a href="/attachments/{{ r.first_attachment_id }}" class="record-attachment-name min-w-0 truncate text-xs text-neutral-500 underline cursor-pointer" style="width:50%">📎 {{ r.first_attachment_name }}</a>
+        <span class="ml-auto shrink-0 text-xs text-neutral-400">
+          {% if r.attachment_count == 1 %}{{ t("records.one_file") }}{% else %}<a href="/records/{{ r.id }}/edit" class="record-more-files text-neutral-500 underline cursor-pointer">{{ t("records.more_files")|replace("{n}", r.extra_attachments) }}</a>{% endif %}
+        </span>
       </div>
+      {% endif %}
     </article>
     {% endfor %}
   </div>
