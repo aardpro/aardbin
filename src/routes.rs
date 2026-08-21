@@ -1,4 +1,4 @@
-//! HTTP handlers (PRD §30 route table).
+//! HTTP handlers (SPEC §30 route table).
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -8,8 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Multipart, Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
-use axum::response::{Html, IntoResponse, Response, Sse};
 use axum::response::sse::{Event, KeepAlive};
+use axum::response::{Html, IntoResponse, Response, Sse};
 use axum::Form;
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
@@ -19,8 +19,21 @@ use uuid::Uuid;
 
 use crate::db::AttachmentRow;
 use crate::files::{content_disposition, human_size, INLINE_WHITELIST};
+use crate::i18n::{self, Lang};
 use crate::render::{display_title, format_ts_utc, snippet, truncate_chars};
 use crate::AppState;
+
+/// Extract language from request headers (Cookie > Accept-Language > en).
+fn detect_lang(headers: &HeaderMap) -> Lang {
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| i18n::extract_lang_cookie(Some(v)));
+    let accept = headers
+        .get(header::ACCEPT_LANGUAGE)
+        .and_then(|v| v.to_str().ok());
+    i18n::resolve(cookie, accept)
+}
 
 fn now() -> i64 {
     SystemTime::now()
@@ -35,6 +48,7 @@ fn now() -> i64 {
 
 #[derive(Serialize)]
 struct LoginView {
+    lang: String,
     error: Option<String>,
 }
 
@@ -54,6 +68,7 @@ struct RecordView {
 
 #[derive(Serialize)]
 struct ListView {
+    lang: String,
     records: Vec<RecordView>,
     page: i64,
     total_pages: i64,
@@ -72,6 +87,7 @@ struct AttachmentView {
 
 #[derive(Serialize)]
 struct FormView {
+    lang: String,
     mode: String,
     action: String,
     id: String,
@@ -105,7 +121,7 @@ fn internal(e: anyhow::Error) -> Response {
 }
 
 // ---------------------------------------------------------------------------
-// Auth (PRD §7, §29)
+// Auth (SPEC §7, §29)
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -113,11 +129,17 @@ pub struct LoginQuery {
     error: Option<String>,
 }
 
-pub async fn get_login(State(s): State<AppState>, Query(q): Query<LoginQuery>) -> Response {
+pub async fn get_login(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<LoginQuery>,
+) -> Response {
+    let lang = detect_lang(&headers);
     let view = LoginView {
-        error: q.error.map(|_| "Invalid access key".to_string()),
+        lang: lang.as_str().to_string(),
+        error: q.error.map(|_| i18n::t(lang, "login.error")),
     };
-    match s.renderer.render("login.html", &view) {
+    match s.renderer.render_lang(lang, "login.html", &view) {
         Ok(html) => Html(html).into_response(),
         Err(e) => internal(e.into()),
     }
@@ -131,23 +153,39 @@ pub struct LoginForm {
 pub async fn post_login(
     State(s): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Form(form): Form<LoginForm>,
 ) -> Response {
     let ip = addr.ip();
+    let lang = detect_lang(&headers);
 
     if let Err(remaining) = s.limiter.check(ip) {
         let minutes = remaining.as_secs().div_ceil(60);
+        let plural = if minutes == 1 { "" } else { "s" };
         let view = LoginView {
-            error: Some(format!(
-                "Too many attempts. Try again in {minutes} minute{}.",
-                if minutes == 1 { "" } else { "s" }
-            )),
+            lang: lang.as_str().to_string(),
+            error: Some(i18n::t(lang, "rate.too_many")),
+        };
+        // Do simple substitution for {minutes} and {plural}
+        let error_msg = view.error.as_ref().unwrap()
+            .replace("{minutes}", &minutes.to_string())
+            .replace("{plural}", plural);
+        let view = LoginView {
+            lang: lang.as_str().to_string(),
+            error: Some(error_msg),
         };
         let html = s
             .renderer
-            .render("login.html", &view)
+            .render_lang(lang, "login.html", &view)
             .unwrap_or_else(|_| "Too many attempts".into());
-        return (StatusCode::TOO_MANY_REQUESTS, Html(html)).into_response();
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [
+                (header::RETRY_AFTER, format!("{}", remaining.as_secs())),
+            ],
+            Html(html),
+        )
+            .into_response();
     }
 
     let ok: bool = form
@@ -187,8 +225,40 @@ pub async fn post_logout(State(s): State<AppState>) -> Response {
         .into_response()
 }
 
+/// POST /lang — set the aardbin_lang cookie and redirect back.
+#[derive(Deserialize)]
+pub struct LangForm {
+    lang: String,
+}
+
+pub async fn post_lang(
+    headers: HeaderMap,
+    Form(form): Form<LangForm>,
+) -> Response {
+    let lang_val = match form.lang.as_str() {
+        "zh" => "zh",
+        _ => "en",
+    };
+    let cookie = format!(
+        "aardbin_lang={lang_val}; Path=/; SameSite=Lax; Max-Age={}",
+        365 * 86400
+    );
+    let referer = headers
+        .get(header::REFERER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("/");
+    (
+        StatusCode::SEE_OTHER,
+        [
+            (header::LOCATION, referer.to_string()),
+            (header::SET_COOKIE, cookie),
+        ],
+    )
+        .into_response()
+}
+
 // ---------------------------------------------------------------------------
-// Records list (PRD §10–§13)
+// Records list (SPEC §10–§13)
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -196,7 +266,7 @@ pub struct PageQuery {
     page: Option<i64>,
 }
 
-async fn build_list_view(s: &AppState, page: i64) -> anyhow::Result<ListView> {
+async fn build_list_view(s: &AppState, page: i64, lang: Lang) -> anyhow::Result<ListView> {
     let page_size = s.cfg.page_size;
     let (rows, total) = s.db.list_records(page.max(1), page_size).await?;
     let total_pages = ((total + page_size - 1) / page_size).max(1);
@@ -227,7 +297,7 @@ async fn build_list_view(s: &AppState, page: i64) -> anyhow::Result<ListView> {
 
             match s.crypto.decrypt(&r.blob) {
                 Ok((title, content)) => {
-                    let (title, untitled) = display_title(&title, &content);
+                    let (title, untitled) = display_title(&title, &content, lang);
                     RecordView {
                         id: r.id,
                         title,
@@ -258,6 +328,7 @@ async fn build_list_view(s: &AppState, page: i64) -> anyhow::Result<ListView> {
         .collect();
 
     Ok(ListView {
+        lang: lang.as_str().to_string(),
         records,
         page,
         total_pages,
@@ -268,9 +339,10 @@ async fn build_list_view(s: &AppState, page: i64) -> anyhow::Result<ListView> {
 }
 
 /// GET / — full page.
-pub async fn index(State(s): State<AppState>) -> Response {
-    match build_list_view(&s, 1).await {
-        Ok(view) => match s.renderer.render("list.html", &view) {
+pub async fn index(State(s): State<AppState>, headers: HeaderMap) -> Response {
+    let lang = detect_lang(&headers);
+    match build_list_view(&s, 1, lang).await {
+        Ok(view) => match s.renderer.render_lang(lang, "list.html", &view) {
             Ok(html) => Html(html).into_response(),
             Err(e) => internal(e.into()),
         },
@@ -279,9 +351,14 @@ pub async fn index(State(s): State<AppState>) -> Response {
 }
 
 /// GET /records?page=N — HTMX partial for the list region.
-pub async fn records_partial(State(s): State<AppState>, Query(q): Query<PageQuery>) -> Response {
-    match build_list_view(&s, q.page.unwrap_or(1)).await {
-        Ok(view) => match s.renderer.render("partials/records.html", &view) {
+pub async fn records_partial(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<PageQuery>,
+) -> Response {
+    let lang = detect_lang(&headers);
+    match build_list_view(&s, q.page.unwrap_or(1), lang).await {
+        Ok(view) => match s.renderer.render_lang(lang, "partials/records.html", &view) {
             Ok(html) => Html(html).into_response(),
             Err(e) => internal(e.into()),
         },
@@ -290,11 +367,13 @@ pub async fn records_partial(State(s): State<AppState>, Query(q): Query<PageQuer
 }
 
 // ---------------------------------------------------------------------------
-// Record create / edit / delete / copy (PRD §14–§16)
+// Record create / edit / delete / copy (SPEC §14–§16)
 // ---------------------------------------------------------------------------
 
-pub async fn new_form(State(s): State<AppState>) -> Response {
+pub async fn new_form(State(s): State<AppState>, headers: HeaderMap) -> Response {
+    let lang = detect_lang(&headers);
     let view = FormView {
+        lang: lang.as_str().to_string(),
         mode: "new".into(),
         action: "/records".into(),
         id: String::new(),
@@ -304,28 +383,29 @@ pub async fn new_form(State(s): State<AppState>) -> Response {
         max_attachment_human: human_size(s.cfg.max_attachment_bytes as i64),
         max_attachment_bytes: s.cfg.max_attachment_bytes,
     };
-    match s.renderer.render("form.html", &view) {
+    match s.renderer.render_lang(lang, "form.html", &view) {
         Ok(html) => Html(html).into_response(),
         Err(e) => internal(e.into()),
     }
 }
 
-struct PendingUpload {
-    id: String,
-    original_filename: String,
-    mime_type: String,
-    size: u64,
+pub struct PendingUpload {
+    pub id: String,
+    pub original_filename: String,
+    pub mime_type: String,
+    pub size: u64,
 }
 
-struct ParsedRecordForm {
-    title: String,
-    content: String,
-    uploads: Vec<PendingUpload>,
+pub struct ParsedRecordForm {
+    pub title: String,
+    pub content: String,
+    pub uploads: Vec<PendingUpload>,
 }
 
 /// Streams a multipart form: text fields to memory, files to temp files
-/// (renamed to final UUID path on success). Enforces all PRD §17 limits.
-async fn parse_record_form(
+/// (renamed to final UUID path on success). Enforces all SPEC §17 limits.
+#[allow(clippy::result_large_err)]
+pub async fn parse_record_form(
     mut multipart: Multipart,
     s: &AppState,
     content_length: Option<u64>,
@@ -382,10 +462,7 @@ async fn parse_record_form(
                     cleanup_uploads(s, &uploads).await;
                     return Err(err_response(
                         StatusCode::UNPROCESSABLE_ENTITY,
-                        format!(
-                            "Content too large (max {} bytes)",
-                            s.cfg.max_content_bytes
-                        ),
+                        format!("Content too large (max {} bytes)", s.cfg.max_content_bytes),
                     ));
                 }
                 if name == "title" {
@@ -460,7 +537,7 @@ async fn parse_record_form(
                     return Err(resp);
                 }
 
-                // fsync + close + rename to attachments/{uuid} (PRD §32)
+                // fsync + close + rename to attachments/{uuid} (SPEC §32)
                 if let Err(e) = s.files.finalize_upload(&id, tmp_file).await {
                     s.files.abort_upload(&id).await;
                     cleanup_uploads(s, &uploads).await;
@@ -490,13 +567,13 @@ async fn parse_record_form(
     })
 }
 
-async fn cleanup_uploads(s: &AppState, uploads: &[PendingUpload]) {
+pub async fn cleanup_uploads(s: &AppState, uploads: &[PendingUpload]) {
     for u in uploads {
         s.files.delete_attachment(&u.id).await;
     }
 }
 
-async fn insert_uploads(
+pub async fn insert_uploads(
     s: &AppState,
     record_id: &str,
     uploads: Vec<PendingUpload>,
@@ -549,14 +626,11 @@ pub async fn create_record(
     }
 
     let _ = s.events.send(());
-    (
-        StatusCode::NO_CONTENT,
-        [("HX-Redirect", "/")],
-    )
-        .into_response()
+    (StatusCode::NO_CONTENT, [("HX-Redirect", "/")]).into_response()
 }
 
-pub async fn edit_form(State(s): State<AppState>, Path(id): Path<String>) -> Response {
+pub async fn edit_form(State(s): State<AppState>, Path(id): Path<String>, headers: HeaderMap) -> Response {
+    let lang = detect_lang(&headers);
     let row = match s.db.get_record(&id).await {
         Ok(Some(r)) => r,
         Ok(None) => return err_response(StatusCode::NOT_FOUND, "record not found"),
@@ -565,7 +639,7 @@ pub async fn edit_form(State(s): State<AppState>, Path(id): Path<String>) -> Res
     let (title, content) = match s.crypto.decrypt(&row.blob) {
         Ok(v) => v,
         Err(_) => {
-            // PRD §8.4: undecryptable records cannot be edited or overwritten
+            // SPEC §8.4: undecryptable records cannot be edited or overwritten
             return err_response(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "Unable to decrypt this record; editing is disabled.",
@@ -577,6 +651,7 @@ pub async fn edit_form(State(s): State<AppState>, Path(id): Path<String>) -> Res
         Err(e) => return internal(e),
     };
     let view = FormView {
+        lang: lang.as_str().to_string(),
         mode: "edit".into(),
         action: format!("/records/{id}"),
         id,
@@ -586,7 +661,7 @@ pub async fn edit_form(State(s): State<AppState>, Path(id): Path<String>) -> Res
         max_attachment_human: human_size(s.cfg.max_attachment_bytes as i64),
         max_attachment_bytes: s.cfg.max_attachment_bytes,
     };
-    match s.renderer.render("form.html", &view) {
+    match s.renderer.render_lang(lang, "form.html", &view) {
         Ok(html) => Html(html).into_response(),
         Err(e) => internal(e.into()),
     }
@@ -622,6 +697,7 @@ pub async fn update_record(
 
     let ts = now();
     let blob = s.crypto.encrypt(&form.title, &form.content);
+    let old_blob = row.blob.clone(); // keep for rollback if upload insert fails
     match s.db.update_record(&id, &blob, ts).await {
         Ok(true) => {}
         Ok(false) => return err_response(StatusCode::NOT_FOUND, "record not found"),
@@ -631,15 +707,14 @@ pub async fn update_record(
         }
     }
     if let Err(e) = insert_uploads(&s, &id, form.uploads, ts).await {
+        // Rollback: restore the old encrypted blob so the record is not lost.
+        let ts_old = row.updated_at;
+        let _ = s.db.update_record(&id, &old_blob, ts_old).await;
         return internal(e);
     }
 
     let _ = s.events.send(());
-    (
-        StatusCode::NO_CONTENT,
-        [("HX-Redirect", "/")],
-    )
-        .into_response()
+    (StatusCode::NO_CONTENT, [("HX-Redirect", "/")]).into_response()
 }
 
 pub async fn delete_record(State(s): State<AppState>, Path(id): Path<String>) -> Response {
@@ -676,7 +751,7 @@ pub async fn copy_record(State(s): State<AppState>, Path(id): Path<String>) -> R
 }
 
 // ---------------------------------------------------------------------------
-// Attachments (PRD §9)
+// Attachments (SPEC §9)
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -705,8 +780,8 @@ pub async fn download_attachment(
         }
     };
 
-    let inline_ok = q.inline.as_deref() == Some("1")
-        && INLINE_WHITELIST.contains(&meta.mime_type.as_str());
+    let inline_ok =
+        q.inline.as_deref() == Some("1") && INLINE_WHITELIST.contains(&meta.mime_type.as_str());
     let disposition = content_disposition(
         if inline_ok { "inline" } else { "attachment" },
         &meta.original_filename,
@@ -733,7 +808,9 @@ pub async fn download_attachment(
 pub async fn delete_attachment(
     State(s): State<AppState>,
     Path((record_id, attachment_id)): Path<(String, String)>,
+    headers: HeaderMap,
 ) -> Response {
+    let lang = detect_lang(&headers);
     let removed = match s.db.delete_attachment(&record_id, &attachment_id).await {
         Ok(v) => v,
         Err(e) => return internal(e),
@@ -742,7 +819,7 @@ pub async fn delete_attachment(
         return err_response(StatusCode::NOT_FOUND, "attachment not found");
     }
     s.files.delete_attachment(&attachment_id).await;
-    // attachment changes bump the record's updated_at (PRD §14.2)
+    // attachment changes bump the record's updated_at (SPEC §14.2)
     if let Err(e) = s.db.touch_record(&record_id, now()).await {
         return internal(e);
     }
@@ -755,11 +832,15 @@ pub async fn delete_attachment(
     let views: Vec<AttachmentView> = attachments.iter().map(attachment_view).collect();
     #[derive(Serialize)]
     struct Ctx {
+        lang: String,
         attachments: Vec<AttachmentView>,
     }
     match s
         .renderer
-        .render("partials/attachments.html", &Ctx { attachments: views })
+        .render_lang(lang, "partials/attachments.html", &Ctx {
+            lang: lang.as_str().to_string(),
+            attachments: views,
+        })
     {
         Ok(html) => Html(html).into_response(),
         Err(e) => internal(e.into()),
@@ -767,10 +848,12 @@ pub async fn delete_attachment(
 }
 
 // ---------------------------------------------------------------------------
-// SSE (PRD §18)
+// SSE (SPEC §18)
 // ---------------------------------------------------------------------------
 
-pub async fn events(State(s): State<AppState>) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+pub async fn events(
+    State(s): State<AppState>,
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let rx = s.events.subscribe();
     let stream = tokio_stream::wrappers::BroadcastStream::new(rx).map(|_| {
         // Ok(()) or Err(Lagged) — either way, changes happened
@@ -781,4 +864,43 @@ pub async fn events(State(s): State<AppState>) -> Sse<impl tokio_stream::Stream<
             .interval(std::time::Duration::from_secs(25))
             .text("ping"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn err_response_status_and_body() {
+        let resp = err_response(StatusCode::NOT_FOUND, "gone");
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn page_query_defaults_to_none() {
+        let q: PageQuery = serde_json::from_str("{}").unwrap();
+        assert!(q.page.is_none());
+    }
+
+    #[test]
+    fn page_query_parses_value() {
+        let q: PageQuery = serde_json::from_str(r#"{"page":3}"#).unwrap();
+        assert_eq!(q.page, Some(3));
+    }
+
+    #[test]
+    fn login_query_error_optional() {
+        let q: LoginQuery = serde_json::from_str("{}").unwrap();
+        assert!(q.error.is_none());
+        let q: LoginQuery = serde_json::from_str(r#"{"error":"bad"}"#).unwrap();
+        assert_eq!(q.error.as_deref(), Some("bad"));
+    }
+
+    #[test]
+    fn now_returns_reasonable_timestamp() {
+        let ts = now();
+        // After 2024-01-01 and before 2100-01-01
+        assert!(ts > 1_704_067_200);
+        assert!(ts < 4_102_444_800_i64);
+    }
 }

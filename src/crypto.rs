@@ -1,4 +1,4 @@
-//! AES-256-GCM encryption of record title + content (PRD §8).
+//! AES-256-GCM encryption of record title + content (SPEC §8).
 //!
 //! Blob layout: 12-byte random nonce || ciphertext || 16-byte GCM tag.
 //! Plaintext is JSON: {"title": "...", "content": "..."}.
@@ -48,7 +48,13 @@ impl Crypto {
 
         let ciphertext = self
             .cipher
-            .encrypt(nonce, Payload { msg: &json, aad: b"aardbin-record-v1" })
+            .encrypt(
+                nonce,
+                Payload {
+                    msg: &json,
+                    aad: b"aardbin-record-v1",
+                },
+            )
             .expect("encryption cannot fail");
 
         let mut out = Vec::with_capacity(12 + ciphertext.len());
@@ -67,7 +73,13 @@ impl Crypto {
 
         let json = self
             .cipher
-            .decrypt(nonce, Payload { msg: ciphertext, aad: b"aardbin-record-v1" })
+            .decrypt(
+                nonce,
+                Payload {
+                    msg: ciphertext,
+                    aad: b"aardbin-record-v1",
+                },
+            )
             .map_err(|_| DecryptError)?;
 
         #[derive(Deserialize)]

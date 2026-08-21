@@ -1,4 +1,4 @@
-//! In-memory sliding-window rate limiter for POST /login (PRD §7.4).
+//! In-memory sliding-window rate limiter for POST /login (SPEC §7.4).
 //!
 //! 5 failed attempts within a 5-minute window → locked out until the
 //! window drains. Successful login clears the counter.

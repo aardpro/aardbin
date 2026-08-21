@@ -1,14 +1,4 @@
-//! aardbin — self-hosted single-user personal bin (see PRD.md).
-
-mod config;
-mod crypto;
-mod db;
-mod files;
-mod guard;
-mod ratelimit;
-mod render;
-mod routes;
-mod session;
+//! aardbin — self-hosted single-user personal bin (see docs/SPEC.md).
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -21,26 +11,15 @@ use tokio::sync::broadcast;
 use tower_http::services::ServeDir;
 use tracing_subscriber::EnvFilter;
 
-use crate::config::Config;
-use crate::crypto::Crypto;
-use crate::db::Db;
-use crate::files::FileStore;
-use crate::guard::AuthState;
-use crate::ratelimit::LoginRateLimiter;
-use crate::render::Renderer;
-use crate::session::SessionManager;
-
-#[derive(Clone)]
-pub struct AppState {
-    pub cfg: Arc<Config>,
-    pub db: Db,
-    pub files: FileStore,
-    pub crypto: Crypto,
-    pub sessions: Arc<SessionManager>,
-    pub limiter: Arc<LoginRateLimiter>,
-    pub events: broadcast::Sender<()>,
-    pub renderer: Renderer,
-}
+use aardbin::*;
+use aardbin::config::Config;
+use aardbin::crypto::Crypto;
+use aardbin::db::Db;
+use aardbin::files::FileStore;
+use aardbin::guard::AuthState;
+use aardbin::ratelimit::LoginRateLimiter;
+use aardbin::render::Renderer;
+use aardbin::session::SessionManager;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -62,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
     let db = Db::open(&cfg.data_dir.join("aardbin.db"))?;
     let files = FileStore::new(&cfg.data_dir)?;
 
-    // Startup orphan scan (PRD §33): warn only, never auto-delete.
+    // Startup orphan scan (SPEC §33): warn only, never auto-delete.
     let known_ids = db.all_attachment_ids().await?;
     files.orphan_scan(&known_ids).await?;
 
@@ -83,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
         cfg: cfg.clone(),
     };
 
-    // Authenticated application routes (PRD §30).
+    // Authenticated application routes (SPEC §30).
     let protected = Router::new()
         .route("/", get(routes::index))
         .route(
@@ -112,6 +91,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/healthz", get(|| async { "ok" }))
         .route("/login", get(routes::get_login).post(routes::post_login))
         .route("/logout", post(routes::post_logout))
+        .route("/lang", post(routes::post_lang))
+        // JSON API (E1)
+        .route("/api/records", get(api::api_list_records).post(api::api_create_record))
+        .route("/api/records/{id}", get(api::api_get_record).delete(api::api_delete_record))
+        .route("/api/attachments/{id}", get(api::api_download_attachment))
         .nest_service("/static", ServeDir::new(cfg.static_dir.clone()))
         .merge(protected)
         .layer(DefaultBodyLimit::max(cfg.max_request_bytes as usize))

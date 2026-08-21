@@ -1,7 +1,43 @@
-/* aardbin — JavaScript only for what the browser must own (PRD §28):
-   clipboard, file drag&drop, SSE/EventSource, relative times, toasts. */
+/* aardbin — JavaScript only for what the browser must own (SPEC §28):
+   clipboard, file drag&drop, SSE/EventSource, relative times, toasts.
+   Includes lightweight i18n table for client-side strings (E9). */
 (() => {
   "use strict";
+
+  // ---------- i18n ----------
+  // Detect language from <html lang="…"> attribute set by the server.
+  const LANG = (document.documentElement.lang || "en").startsWith("zh") ? "zh" : "en";
+  const I18N = {
+    en: {
+      "js.copied": "Copied",
+      "js.copy_failed": "Copy failed",
+      "js.just_now": "just now",
+      "js.minute_ago": "1 minute ago",
+      "js.minutes_ago": (n) => `${n} minutes ago`,
+      "js.hour_ago": "1 hour ago",
+      "js.hours_ago": (n) => `${n} hours ago`,
+      "js.yesterday": "yesterday",
+      "js.exceeds_max": "exceeds max",
+      "js.skipped": "skipped",
+    },
+    zh: {
+      "js.copied": "已复制",
+      "js.copy_failed": "复制失败",
+      "js.just_now": "刚刚",
+      "js.minute_ago": "1 分钟前",
+      "js.minutes_ago": (n) => `${n} 分钟前`,
+      "js.hour_ago": "1 小时前",
+      "js.hours_ago": (n) => `${n} 小时前`,
+      "js.yesterday": "昨天",
+      "js.exceeds_max": "超过最大",
+      "js.skipped": "已跳过",
+    },
+  };
+  function t(key, ...args) {
+    const val = I18N[LANG]?.[key] ?? I18N.en[key] ?? key;
+    if (typeof val === "function") return val(...args);
+    return val;
+  }
 
   // ---------- toasts ----------
   function toast(msg, kind) {
@@ -16,7 +52,7 @@
     setTimeout(() => el.remove(), 2500);
   }
 
-  // ---------- copy (PRD §15) ----------
+  // ---------- copy (SPEC §15) ----------
   document.addEventListener("click", async (e) => {
     const btn = e.target.closest("[data-copy]");
     if (!btn) return;
@@ -27,13 +63,13 @@
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const text = await resp.text();
       await navigator.clipboard.writeText(text);
-      toast("Copied");
+      toast(t("js.copied"));
     } catch {
-      toast("Copy failed", "error");
+      toast(t("js.copy_failed"), "error");
     }
   });
 
-  // ---------- SSE real-time sync (PRD §18–§20) ----------
+  // ---------- SSE real-time sync (SPEC §18–§20) ----------
   // Events carry no payload; any message → reload the list region.
   // EventSource reconnects automatically on network loss.
   const region = document.getElementById("records-region");
@@ -48,21 +84,28 @@
         }
       }, 300);
     });
+    // After reconnect (network loss recovery), refresh the list to catch
+    // any changes that happened while disconnected.
+    es.onopen = () => {
+      if (document.getElementById("records-region")) {
+        document.body.dispatchEvent(new Event("aardbin:refresh"));
+      }
+    };
   }
 
-  // ---------- relative times (PRD §12) ----------
+  // ---------- relative times (SPEC §12) ----------
   function pad(n) {
     return String(n).padStart(2, "0");
   }
   function relativeText(tsSec, nowMs) {
     const diff = Math.max(0, nowMs / 1000 - tsSec);
-    if (diff < 45) return "just now";
+    if (diff < 45) return t("js.just_now");
     const min = Math.floor(diff / 60);
-    if (min < 2) return "1 minute ago";
-    if (min < 60) return `${min} minutes ago`;
+    if (min < 2) return t("js.minute_ago");
+    if (min < 60) return t("js.minutes_ago", min);
     const hr = Math.floor(min / 60);
-    if (hr < 2) return "1 hour ago";
-    if (hr < 24) return `${hr} hours ago`;
+    if (hr < 2) return t("js.hour_ago");
+    if (hr < 24) return t("js.hours_ago", hr);
     const d = new Date(tsSec * 1000);
     const now = new Date(nowMs);
     const yesterday = new Date(nowMs - 86400000);
@@ -71,7 +114,7 @@
       d.getMonth() === yesterday.getMonth() &&
       d.getDate() === yesterday.getDate()
     ) {
-      return `yesterday ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      return `${t("js.yesterday")} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
     if (d.getFullYear() === now.getFullYear()) {
       return `${d.getMonth() + 1}/${d.getDate()}`;
@@ -93,7 +136,7 @@
   document.body.addEventListener("htmx:afterSwap", (e) => renderTimes(e.target));
   setInterval(() => renderTimes(document), 30000);
 
-  // ---------- drag & drop upload (PRD §26) ----------
+  // ---------- drag & drop upload (SPEC §26) ----------
   const dz = document.getElementById("dropzone");
   const input = document.getElementById("file-input");
   if (dz && input) {
@@ -122,7 +165,7 @@
       for (const f of input.files) dt.items.add(f);
       for (const f of fileList) {
         if (maxBytes && f.size > maxBytes) {
-          toast(`"${f.name}" exceeds ${humanSize(maxBytes)} — skipped`, "error");
+          toast(`"${f.name}" ${t("js.exceeds_max")} ${humanSize(maxBytes)} — ${t("js.skipped")}`, "error");
           continue;
         }
         dt.items.add(f);

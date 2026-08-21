@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# aardbin integration smoke test — covers PRD acceptance criteria AC-01..AC-14.
+# aardbin integration smoke test — covers SPEC acceptance criteria AC-01..AC-14.
 # Requires: curl, python3, and a built target/debug/aardbin binary.
 set -u
 
@@ -14,6 +14,7 @@ H="$TMP/headers.txt"
 LOG="$TMP/server.log"
 SSE_OUT="$TMP/sse.out"
 BIN=./target/debug/aardbin
+CLI=./target/debug/aardbin-cli
 
 ACCESS_KEY="smoke-access-key-0123456789"
 CRYPTO_KEY="$(python3 -c 'import secrets;print(secrets.token_hex(32))')"
@@ -104,7 +105,7 @@ grep -qi "secure" "$H" && S=1 || S=0
 [ "$(code -b "$JAR" "$BASE/")" = "200" ]; check "authenticated GET / -> 200" $?
 stop_server
 
-# restart — session must survive (stateless HMAC, PRD §7.2.1)
+# restart — session must survive (stateless HMAC, SPEC §7.2.1)
 start_server
 [ "$(code -b "$JAR" "$BASE/")" = "200" ]; check "session survives server restart" $?
 
@@ -209,7 +210,7 @@ N3=$(echo "$P3" | grep -o '<article' | wc -l)
 [ "$N3" -eq 4 ]; check "page 3 shows remaining records" $?
 echo "$P3" | grep -q "bulk-"; check "page 3 contains older records" $?
 
-# title fallback (AC §10.3)
+# title fallback (SPEC §10.3)
 curl -s -o /dev/null -b "$JAR" -X POST -F "title=" -F "content=fallback-line-marker
 second" "$BASE/records"
 curl -s -o /dev/null -b "$JAR" -X POST -F "title=" -F "content=" "$BASE/records"
@@ -218,13 +219,15 @@ echo "$FALLBACK" | grep -q "fallback-line-marker"; check "empty title -> first c
 echo "$FALLBACK" | grep -q "Untitled"; check "empty record -> Untitled" $?
 
 echo "== AC-14 : SSE data_changed + heartbeat =="
-curl -s -N -b "$JAR" --max-time 27 "$BASE/events" > "$SSE_OUT" &
+# The heartbeat interval is 25s; allow up to 30s for the curl to collect it.
+curl -s -N -b "$JAR" --max-time 30 "$BASE/events" > "$SSE_OUT" &
 SSE_PID=$!
 sleep 1
 curl -s -o /dev/null -b "$JAR" -X POST -F "content=sse-trigger-marker" "$BASE/records"
-wait "$SSE_PID"
+# Wait for curl to finish (up to 30s); kill if still running after timeout.
+wait "$SSE_PID" 2>/dev/null || true
 grep -q "event: data_changed" "$SSE_OUT"; check "SSE receives data_changed event" $?
-grep -q ": ping" "$SSE_OUT"; check "SSE heartbeat : ping received within 27s" $?
+grep -q ": ping" "$SSE_OUT"; check "SSE heartbeat : ping received within 30s" $?
 
 echo "== AC-13 : decryption failure degrades gracefully =="
 stop_server
@@ -272,6 +275,56 @@ grep -qi "max-age=0" "$H"; check "logout sets Max-Age=0" $?
 # fresh request without cookie -> back to login
 curl -s -o /dev/null -D "$H" "$BASE/"
 grep -qi "location: /login" "$H"; check "no cookie after logout -> 303 /login" $?
+stop_server
+
+echo "== CLI end-to-end (E3, E11) =="
+# Build CLI if needed
+cargo build -p aardbin-cli 2>/dev/null
+start_server
+
+# paste: create a record
+CLI_OUT=$(env AARDBIN_URL="$BASE" AARDBIN_ACCESS_KEY="$ACCESS_KEY" $CLI paste -t "CLI Test" -c "hello from cli smoke test" 2>&1)
+CLI_RC=$?
+[ "$CLI_RC" = "0" ]; check "cli paste exits 0" $?
+CLI_RID=$(echo "$CLI_OUT" | tail -1)
+[ -n "$CLI_RID" ]; check "cli paste returns record id" $?
+
+# list: should show at least 1 record
+CLI_OUT=$(env AARDBIN_URL="$BASE" AARDBIN_ACCESS_KEY="$ACCESS_KEY" $CLI list 2>&1)
+CLI_RC=$?
+[ "$CLI_RC" = "0" ]; check "cli list exits 0" $?
+echo "$CLI_OUT" | grep -q "CLI Test"; check "cli list shows created record" $?
+
+# get: fetch the record
+CLI_OUT=$(env AARDBIN_URL="$BASE" AARDBIN_ACCESS_KEY="$ACCESS_KEY" $CLI get "$CLI_RID" 2>&1)
+CLI_RC=$?
+[ "$CLI_RC" = "0" ]; check "cli get exits 0" $?
+echo "$CLI_OUT" | grep -q "hello from cli smoke test"; check "cli get shows content" $?
+echo "$CLI_OUT" | grep -q "Title: CLI Test"; check "cli get shows title" $?
+
+# upload an attachment via paste with file
+printf 'cli attachment content' > "$TMP/cli_att.txt"
+CLI_OUT=$(env AARDBIN_URL="$BASE" AARDBIN_ACCESS_KEY="$ACCESS_KEY" $CLI paste -t "CLI With File" -c "has attachment" -f "$TMP/cli_att.txt" 2>&1)
+CLI_RC=$?
+[ "$CLI_RC" = "0" ]; check "cli paste with file exits 0" $?
+CLI_RID2=$(echo "$CLI_OUT" | tail -1)
+CLI_OUT=$(env AARDBIN_URL="$BASE" AARDBIN_ACCESS_KEY="$ACCESS_KEY" $CLI get "$CLI_RID2" 2>&1)
+echo "$CLI_OUT" | grep -q "cli_att.txt"; check "cli get shows attachment filename" $?
+
+# delete the first record
+CLI_OUT=$(env AARDBIN_URL="$BASE" AARDBIN_ACCESS_KEY="$ACCESS_KEY" $CLI delete "$CLI_RID" 2>&1)
+CLI_RC=$?
+[ "$CLI_RC" = "0" ]; check "cli delete exits 0" $?
+echo "$CLI_OUT" | grep -q "Deleted"; check "cli delete confirms" $?
+
+# verify deleted
+CLI_OUT=$(env AARDBIN_URL="$BASE" AARDBIN_ACCESS_KEY="$ACCESS_KEY" $CLI get "$CLI_RID" 2>&1)
+[ "$?" != "0" ]; check "cli get deleted record fails" $?
+
+# wrong key rejected
+CLI_OUT=$(env AARDBIN_URL="$BASE" AARDBIN_ACCESS_KEY="wrong-key-wrong-key1" $CLI list 2>&1)
+[ "$?" != "0" ]; check "cli wrong key rejected" $?
+
 stop_server
 
 echo

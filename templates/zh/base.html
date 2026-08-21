@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="same-origin">
+<title>{% block title %}aardbin{% endblock %}</title>
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/vendor/htmx.min.js" defer></script>
+<script src="/static/app.js" defer></script>
+</head>
+<body class="bg-neutral-100 text-neutral-900 antialiased">
+<header class="sticky top-0 z-10 border-b border-neutral-200 bg-white/90 backdrop-blur">
+  <div class="mx-auto flex h-12 max-w-5xl items-center justify-between px-3 sm:px-4">
+    <a href="/" class="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
+      <img src="/static/logo.webp" alt="" width="24" height="24"
+           class="h-6 w-6 rounded-full ring-1 ring-neutral-200">aardbin
+    </a>
+    <nav class="flex items-center gap-1.5">
+      <a href="/records/new"
+         class="inline-flex h-8 items-center rounded-md bg-neutral-900 px-2.5 text-[13px] font-medium text-white hover:bg-neutral-700">{{ t("nav.new") }}</a>
+      <form method="post" action="/lang" class="m-0 flex items-center text-xs text-neutral-400">
+        {% if lang == "en" %}<strong class="px-1 font-medium text-neutral-900">EN</strong>{% else %}<button type="submit" name="lang" value="en" class="rounded px-1 py-0.5 hover:text-neutral-900">EN</button>{% endif %}
+        <span class="text-neutral-300">|</span>
+        {% if lang == "zh" %}<strong class="px-1 font-medium text-neutral-900">中文</strong>{% else %}<button type="submit" name="lang" value="zh" class="rounded px-1 py-0.5 hover:text-neutral-900">中文</button>{% endif %}
+      </form>
+      <form method="post" action="/logout" class="m-0">
+        <button type="submit"
+                class="inline-flex h-8 items-center rounded-md px-2.5 text-[13px] text-neutral-600 hover:bg-neutral-200">{{ t("nav.logout") }}</button>
+      </form>
+    </nav>
+  </div>
+</header>
+<main class="mx-auto max-w-5xl px-3 py-4 sm:px-4">
+{% block content %}{% endblock %}
+</main>
+<div id="toast-container" aria-live="polite"
+     class="pointer-events-none fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 flex-col items-center gap-2"></div>
+</body>
+</html>

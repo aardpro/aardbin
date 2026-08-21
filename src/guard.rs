@@ -1,4 +1,4 @@
-//! HTTP middleware: session auth (PRD §29) and POST origin guard (PRD §7.5).
+//! HTTP middleware: session auth (SPEC §29) and POST origin guard (SPEC §7.5).
 
 use crate::session::{extract_valid_session, SessionManager};
 use axum::body::Body;

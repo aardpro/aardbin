@@ -1,6 +1,6 @@
 [package]
 name = "aardbin"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 license = "MIT"
 description = "Self-hosted single-user personal bin for text snippets and small attachments"
@@ -27,6 +27,15 @@ subtle = "2.6"
 time = { version = "0.3", features = ["formatting"] }
 mime_guess = "2"
 anyhow = "1"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+tempfile = "3"
+reqwest = { version = "0.12", features = ["multipart"] }
+uuid = { version = "1", features = ["v4"] }
+
+[workspace]
+members = [".", "src/cli"]
 
 [profile.release]
 lto = true

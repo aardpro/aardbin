@@ -1,21 +1,9 @@
-# aardbin 产品设计文档
+# aardbin 设计规格文档（SPEC）
 
-> **版本**：v1.1
+> **版本**：v1.0.0
 >
-> **v1.1 修订记录**（在 v1.0 基础上补充实现级细节，不改变产品定位与架构）：
->
-> 1. 明确 Session 实现机制：无状态 HMAC 签名 Cookie，签名密钥由 ACCESS_KEY 派生（§7.2）
-> 2. 路由表补齐：`GET /records/:id/copy`、`POST /records/:id/attachments/:aid/delete`、`GET /healthz`、分页参数（§30）
-> 3. 新增登录限流（§7.4）与 POST Origin 校验（§7.5）
-> 4. `Secure` Cookie 改为可配置，解决与纯 HTTP 内网部署的冲突（§7.2、§36）
-> 5. SSE 增加应用层心跳（§18.3）
-> 6. 明确附件下载响应头策略：默认 `attachment`、图片白名单可内联、`nosniff`、RFC 5987 文件名编码（§9.1）
-> 7. 新增请求体总大小、正文大小、标题长度限制（§17.2）
-> 8. 明确附件增删会 bump 所属记录 `updated_at`（§14.2）
-> 9. 新增 SQLite schema migration 机制（§31）
-> 10. 明确 CRYPTO_KEY 错误时的降级行为（§8.4）
-> 11. 新增 `GET /healthz` 健康检查（§30）
-> 12. 明确登录成功后使用 303 重定向（PRG 模式）（§29）
+> 本文档是 aardbin 的开发面设计规格，从原始 PRD 迁入并保留中文。
+> 延期项与未来迭代清单见本文 §42；用户面上手文档见 [README.md](../README.md)。
 
 ---
 
@@ -1995,24 +1983,14 @@ doctor / startup scan 能识别 orphan。
 
 # 42. 未来迭代
 
-不进入 MVP：
+延期项与未来迭代清单：
 
-1. 文本全文搜索
-2. 标签
-3. 收藏
-4. 记录置顶
-5. Markdown preview
-6. 深色 / 浅色主题
-7. 自动过期
-8. 批量删除
-9. 批量导出
-10. 加密备份包
-11. storage doctor
-12. 操作审计日志
-13. Web Push
-14. PWA
-15. 文件预览
-16. cursor pagination
+1. **MCP server** — 为 aardbin 提供 MCP server，让 AI 助手直接读写记录（P3，依赖 JSON API）
+2. **深色主题** — 深色/浅色主题切换（P3）
+3. **PWA** — manifest + service worker，可安装到手机桌面（P3）
+4. **粘贴直达建记录** — 列表页直接 Ctrl+V 文本即建记录（P3）
+5. **快捷键** — `/` 新建、`c` 复制等键盘操作（P3）
+6. **SPEC 英文版** — 等首个外部贡献者或 API 消费者信号出现再译（P3）
 
 ---
 

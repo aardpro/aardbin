@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == "edit" %}{{ t("form.edit_title") }}{% else %}{{ t("form.new_title") }}{% endif %} · aardbin{% endblock %}
+{% block content %}
+<form hx-post="{{ action }}" hx-encoding="multipart/form-data" hx-swap="none"
+      data-max-attachment-bytes="{{ max_attachment_bytes }}"
+      class="mx-auto max-w-2xl rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+
+  <label for="f-title" class="mb-1 block text-xs font-medium text-neutral-500">{{ t("form.title_label") }}</label>
+  <input id="f-title" type="text" name="title" value="{{ title }}" maxlength="200"
+         placeholder="{{ t('form.title_placeholder') }}"
+         class="mb-3 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-500 focus:ring-2 focus:ring-neutral-200">
+
+  <label for="f-content" class="mb-1 block text-xs font-medium text-neutral-500">{{ t("form.content_label") }}</label>
+  <textarea id="f-content" name="content" rows="9"
+            placeholder="{{ t('form.content_placeholder') }}"
+            class="mb-3 w-full rounded-md border border-neutral-300 px-3 py-2 font-mono text-sm outline-none focus:border-neutral-500 focus:ring-2 focus:ring-neutral-200">{{ content }}</textarea>
+
+  <span class="mb-1 block text-xs font-medium text-neutral-500">
+    {{ t("form.attachments") }} <span class="font-normal text-neutral-400">&middot; {{ t("form.max_each")|replace("{size}", max_attachment_human) }}</span>
+  </span>
+  <div id="dropzone"
+       class="mb-2 flex cursor-pointer items-center justify-center rounded-md border border-dashed border-neutral-300 bg-neutral-50 px-3 py-6 text-sm text-neutral-500 transition-colors hover:border-neutral-400 min-h-[44px]">
+    {{ t("form.dropzone") }}
+  </div>
+  <input type="file" id="file-input" name="files" multiple hidden>
+  <ul id="pending-files" class="mb-2 flex flex-col gap-1"></ul>
+
+  {% if mode == "edit" %}
+  <ul id="attachment-list" class="mb-2 flex flex-col gap-1">
+    {% include "partials/attachments.html" %}
+  </ul>
+  {% endif %}
+
+  <div class="mt-4 flex items-center justify-end gap-2">
+    <a href="/" class="rounded-md px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-100 min-h-[44px] flex items-center">{{ t("form.cancel") }}</a>
+    <button type="submit" hx-disabled-elt="this"
+            class="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 min-h-[44px]">{{ t("form.save") }}</button>
+  </div>
+</form>
+{% endblock %}

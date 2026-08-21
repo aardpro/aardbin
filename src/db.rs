@@ -1,4 +1,4 @@
-//! SQLite storage (PRD §5, §6, §31).
+//! SQLite storage (SPEC §5, §6, §31).
 //!
 //! Single embedded file in WAL mode. Single-user workload → one
 //! `tokio::sync::Mutex<Connection>` is sufficient and keeps everything
@@ -68,7 +68,7 @@ impl Db {
         })
     }
 
-    /// Schema migration driven by `PRAGMA user_version` (PRD §31.1).
+    /// Schema migration driven by `PRAGMA user_version` (SPEC §31.1).
     fn migrate(conn: &Connection) -> anyhow::Result<()> {
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if version < 1 {
@@ -111,8 +111,7 @@ impl Db {
     pub async fn delete_record(&self, id: &str) -> anyhow::Result<Option<Vec<String>>> {
         let conn = self.conn.lock().await;
         let attachment_ids = {
-            let mut stmt =
-                conn.prepare("SELECT id FROM attachments WHERE record_id = ?1")?;
+            let mut stmt = conn.prepare("SELECT id FROM attachments WHERE record_id = ?1")?;
             let ids: Vec<String> = stmt
                 .query_map(params![id], |r| r.get(0))?
                 .collect::<Result<_, _>>()?;
@@ -189,9 +188,7 @@ impl Db {
             "SELECT id, record_id, original_filename, size_bytes, mime_type, created_at
              FROM attachments WHERE id = ?1",
         )?;
-        let row = stmt
-            .query_row(params![id], map_attachment)
-            .optional()?;
+        let row = stmt.query_row(params![id], map_attachment).optional()?;
         Ok(row)
     }
 
@@ -222,7 +219,10 @@ impl Db {
         );
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt
-            .query_map(rusqlite::params_from_iter(record_ids.iter()), map_attachment)?
+            .query_map(
+                rusqlite::params_from_iter(record_ids.iter()),
+                map_attachment,
+            )?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -252,7 +252,7 @@ impl Db {
         Ok(row)
     }
 
-    /// All attachment ids — used by the startup orphan scan (PRD §33).
+    /// All attachment ids — used by the startup orphan scan (SPEC §33).
     pub async fn all_attachment_ids(&self) -> anyhow::Result<Vec<String>> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare("SELECT id FROM attachments")?;

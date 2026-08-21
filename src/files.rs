@@ -1,6 +1,6 @@
-//! Attachment file storage on the local filesystem (PRD §9, §32, §33).
+//! Attachment file storage on the local filesystem (SPEC §9, §32, §33).
 //!
-//! Upload order per PRD §32:
+//! Upload order per SPEC §32:
 //!   1. generate UUID
 //!   2. write temp file
 //!   3. fsync / close
@@ -68,7 +68,7 @@ impl FileStore {
         }
     }
 
-    /// Startup scan (PRD §33): files present on disk but unknown to SQLite.
+    /// Startup scan (SPEC §33): files present on disk but unknown to SQLite.
     /// MVP: log a warning, never auto-delete. Also cleans stale temp files.
     pub async fn orphan_scan(&self, known_ids: &[String]) -> std::io::Result<()> {
         // stale temp files are safe to remove (upload never committed)
@@ -92,7 +92,7 @@ impl FileStore {
     }
 }
 
-/// RFC 5987 Content-Disposition with UTF-8 filename support (PRD §9.1.1).
+/// RFC 5987 Content-Disposition with UTF-8 filename support (SPEC §9.1.1).
 pub fn content_disposition(kind: &str, original_filename: &str) -> String {
     let mut fallback = String::with_capacity(original_filename.len());
     for ch in original_filename.chars() {
@@ -117,7 +117,7 @@ pub fn content_disposition(kind: &str, original_filename: &str) -> String {
     format!("{kind}; filename=\"{fallback}\"; filename*=UTF-8''{encoded}")
 }
 
-/// MIME types allowed to be served inline (PRD §9.1.1).
+/// MIME types allowed to be served inline (SPEC §9.1.1).
 pub const INLINE_WHITELIST: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 pub fn guess_mime(filename: &str, declared: Option<&str>) -> String {

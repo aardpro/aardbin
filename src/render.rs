@@ -1,19 +1,48 @@
-//! Server-side HTML rendering via minijinja (PRD §3.1).
+//! Server-side HTML rendering via minijinja (SPEC §3.1).
+//!
+//! Supports dual template directories (`en/`, `zh/`) with a `t()` translation
+//! function registered per-language environment.
 
 use minijinja::{AutoEscape, Environment};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::i18n::{self, Lang};
+
 #[derive(Clone)]
 pub struct Renderer {
-    env: Arc<Environment<'static>>,
+    envs: Vec<(Lang, Arc<Environment<'static>>)>,
 }
 
 impl Renderer {
+    /// Build one `Environment` per supported language.
+    ///
+    /// Each env loads templates from `templates_dir/<lang>/`.  The `t()`
+    /// function is pre-bound to the corresponding language so templates can
+    /// call `{{ t("key") }}` directly.
     pub fn new(templates_dir: &Path) -> Renderer {
-        let mut env = Environment::new();
-        env.set_loader(minijinja::path_loader(templates_dir));
+        let langs = [Lang::En, Lang::Zh];
+        let mut envs = Vec::new();
+
+        for lang in &langs {
+            let lang_dir = templates_dir.join(lang.as_str());
+            let path = if lang_dir.is_dir() {
+                lang_dir
+            } else {
+                templates_dir.to_path_buf()
+            };
+            let mut env = Environment::new();
+            env.set_loader(minijinja::path_loader(&path));
+            Self::configure_env(&mut env, *lang);
+            envs.push((*lang, Arc::new(env)));
+        }
+
+        Renderer { envs }
+    }
+
+    /// Register auto-escape + the `t()` global function.
+    fn configure_env(env: &mut Environment<'_>, lang: Lang) {
         env.set_auto_escape_callback(|name| {
             if name.ends_with(".html") {
                 AutoEscape::Html
@@ -21,15 +50,25 @@ impl Renderer {
                 AutoEscape::None
             }
         });
-        Renderer { env: Arc::new(env) }
+        env.add_function("t", move |key: String| {
+            i18n::t(lang, &key)
+        });
     }
 
-    pub fn render<S: Serialize>(
+    /// Render a template using the environment for `lang`.
+    pub fn render_lang<S: Serialize>(
         &self,
+        lang: Lang,
         template: &str,
         ctx: S,
     ) -> Result<String, minijinja::Error> {
-        self.env.get_template(template)?.render(&ctx)
+        for (l, env) in &self.envs {
+            if *l == lang {
+                return env.get_template(template)?.render(&ctx);
+            }
+        }
+        // Fallback to English
+        self.envs[0].1.get_template(template)?.render(&ctx)
     }
 }
 
@@ -43,9 +82,11 @@ pub fn truncate_chars(s: &str, max: usize) -> String {
     out
 }
 
-/// Display title per PRD §10.3: explicit title → first content line → "Untitled".
+/// Display title per SPEC §10.3: explicit title → first content line → "Untitled".
 /// Returns (title, is_untitled_placeholder).
-pub fn display_title(title: &str, content: &str) -> (String, bool) {
+///
+/// The "Untitled" placeholder is now translated via `t()`.
+pub fn display_title(title: &str, content: &str, lang: Lang) -> (String, bool) {
     let t = title.trim();
     if !t.is_empty() {
         return (truncate_chars(t, 200), false);
@@ -54,7 +95,7 @@ pub fn display_title(title: &str, content: &str) -> (String, bool) {
     if !first_line.is_empty() {
         return (truncate_chars(first_line, 80), false);
     }
-    ("Untitled".into(), true)
+    (i18n::t(lang, "records.untitled"), true)
 }
 
 /// One-line preview of content for list cards.
@@ -95,13 +136,26 @@ mod tests {
 
     #[test]
     fn title_fallback_chain() {
-        assert_eq!(display_title("  Hi  ", "body"), ("Hi".into(), false));
+        let lang = Lang::En;
+        assert_eq!(display_title("  Hi  ", "body", lang), ("Hi".into(), false));
         assert_eq!(
-            display_title("", "first line\nsecond"),
+            display_title("", "first line\nsecond", lang),
             ("first line".into(), false)
         );
-        assert_eq!(display_title("", "  \n  "), ("Untitled".into(), true));
-        assert_eq!(display_title("  ", ""), ("Untitled".into(), true));
+        assert_eq!(
+            display_title("", "  \n  ", lang),
+            ("Untitled".into(), true)
+        );
+        assert_eq!(display_title("  ", "", lang), ("Untitled".into(), true));
+    }
+
+    #[test]
+    fn title_fallback_chain_zh() {
+        let lang = Lang::Zh;
+        let (title, is_untitled) = display_title("", "", lang);
+        assert!(is_untitled);
+        // Chinese translation of "Untitled"
+        assert_eq!(title, "无标题");
     }
 
     #[test]

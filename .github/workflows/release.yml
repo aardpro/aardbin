@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # ── Static binaries (musl) via cargo-zigbuild ──────────────────────
+  musl-x86_64:
+    name: musl x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: goto-bus-stop/setup-zig@v2
+        with:
+          zig-version: 0.13.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@2
+      - run: cargo install cargo-zigbuild
+      - run: cargo zigbuild --release --workspace --target x86_64-unknown-linux-musl
+      - name: Package tarball
+        run: |
+          mkdir -p release/aardbin-${{ github.ref_name }}
+          cp target/x86_64-unknown-linux-musl/release/aardbin release/aardbin-${{ github.ref_name }}/
+          cp target/x86_64-unknown-linux-musl/release/aardbin-cli release/aardbin-${{ github.ref_name }}/
+          cp -r templates static release/aardbin-${{ github.ref_name }}/
+          tar czf aardbin-${{ github.ref_name }}-x86_64-linux-musl.tar.gz -C release aardbin-${{ github.ref_name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: musl-x86_64
+          path: aardbin-*-x86_64-linux-musl.tar.gz
+
+  musl-aarch64:
+    name: musl aarch64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: goto-bus-stop/setup-zig@v2
+        with:
+          zig-version: 0.13.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@2
+      - run: cargo install cargo-zigbuild
+      - run: cargo zigbuild --release --workspace --target aarch64-unknown-linux-musl
+      - name: Package tarball
+        run: |
+          mkdir -p release/aardbin-${{ github.ref_name }}
+          cp target/aarch64-unknown-linux-musl/release/aardbin release/aardbin-${{ github.ref_name }}/
+          cp target/aarch64-unknown-linux-musl/release/aardbin-cli release/aardbin-${{ github.ref_name }}/
+          cp -r templates static release/aardbin-${{ github.ref_name }}/
+          tar czf aardbin-${{ github.ref_name }}-aarch64-linux-musl.tar.gz -C release aardbin-${{ github.ref_name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: musl-aarch64
+          path: aardbin-*-aarch64-linux-musl.tar.gz
+
+  # ── GHCR multi-arch image via buildx ────────────────────────────────
+  docker:
+    name: GHCR image (amd64 + arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/aardpro/aardbin:${{ steps.meta.outputs.version }}
+            ghcr.io/aardpro/aardbin:latest
+
+  # ── arm64 qemu smoke test ──────────────────────────────────────────
+  smoke-arm64:
+    name: arm64 qemu smoke
+    needs: docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-qemu-action@v3
+      - name: Smoke test arm64 image
+        run: |
+          CRYPTO_KEY=$(python3 -c 'import secrets;print(secrets.token_hex(32))')
+          docker run -d --name aardbin-smoke \
+            --platform linux/arm64 \
+            -e ACCESS_KEY=smoke-test-key-0123456789 \
+            -e CRYPTO_KEY="$CRYPTO_KEY" \
+            -e COOKIE_SECURE=false \
+            -p 18092:8080 \
+            ghcr.io/aardpro/aardbin:latest
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:18092/healthz >/dev/null 2>&1; then
+              echo "arm64 smoke: healthz OK"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:18092/healthz || { echo "arm64 smoke FAILED"; docker logs aardbin-smoke; exit 1; }
+          # login page renders
+          curl -sf http://127.0.0.1:18092/login | grep -q "Access Key" || { echo "arm64 smoke: login page FAILED"; exit 1; }
+          echo "arm64 smoke: all checks passed"
+          docker stop aardbin-smoke
+
+  # ── GitHub Release with tarballs ───────────────────────────────────
+  release:
+    name: Create Release
+    needs: [musl-x86_64, musl-aarch64, smoke-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: musl-*
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: '*.tar.gz'
+          generate_release_notes: true

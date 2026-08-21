@@ -1,4 +1,4 @@
-//! Environment-driven configuration (PRD §36).
+//! Environment-driven configuration (SPEC §36).
 
 use std::env;
 use std::path::PathBuf;
@@ -64,14 +64,12 @@ impl Config {
             templates_dir: PathBuf::from(
                 env::var("TEMPLATES_DIR").unwrap_or_else(|_| "./templates".into()),
             ),
-            static_dir: PathBuf::from(
-                env::var("STATIC_DIR").unwrap_or_else(|_| "./static".into()),
-            ),
+            static_dir: PathBuf::from(env::var("STATIC_DIR").unwrap_or_else(|_| "./static".into())),
         })
     }
 }
 
-/// CRYPTO_KEY: 64-character hex → 32 bytes (PRD §8.1).
+/// CRYPTO_KEY: 64-character hex → 32 bytes (SPEC §8.1).
 fn parse_crypto_key(s: &str) -> Result<[u8; 32], ConfigError> {
     let s = s.trim();
     if s.len() != 64 {
@@ -79,8 +77,8 @@ fn parse_crypto_key(s: &str) -> Result<[u8; 32], ConfigError> {
             "CRYPTO_KEY must be 64 hex characters (32 bytes)".into(),
         ));
     }
-    let bytes = hex::decode(s)
-        .map_err(|_| ConfigError::Invalid("CRYPTO_KEY is not valid hex".into()))?;
+    let bytes =
+        hex::decode(s).map_err(|_| ConfigError::Invalid("CRYPTO_KEY is not valid hex".into()))?;
     let mut key = [0u8; 32];
     key.copy_from_slice(&bytes);
     Ok(key)
@@ -101,9 +99,7 @@ fn parse_bool_env(name: &str, default: bool) -> Result<bool, ConfigError> {
         Ok(v) => match v.trim().to_ascii_lowercase().as_str() {
             "true" | "1" | "yes" => Ok(true),
             "false" | "0" | "no" => Ok(false),
-            _ => Err(ConfigError::Invalid(format!(
-                "{name} must be true/false"
-            ))),
+            _ => Err(ConfigError::Invalid(format!("{name} must be true/false"))),
         },
         Err(_) => Ok(default),
     }

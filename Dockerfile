@@ -12,13 +12,15 @@ RUN npx tailwindcss -i styles/app.css -o /out/app.css --minify
 FROM rust:bookworm AS rust
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
+COPY src/cli/Cargo.toml src/cli/Cargo.toml
 COPY src/ ./src/
-RUN cargo build --release
+RUN cargo build --release --workspace
 
 # ---- Stage 3: runtime ----
 FROM debian:bookworm-slim
 RUN useradd --create-home --uid 10001 aardbin
 COPY --from=rust /build/target/release/aardbin /usr/local/bin/aardbin
+COPY --from=rust /build/target/release/aardbin-cli /usr/local/bin/aardbin-cli
 COPY templates/ /app/templates/
 COPY static/ /app/static/
 COPY --from=frontend /out/app.css /app/static/app.css

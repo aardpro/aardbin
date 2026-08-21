@@ -1,4 +1,4 @@
-//! Stateless HMAC-signed session cookie (PRD §7.2.1).
+//! Stateless HMAC-signed session cookie (SPEC §7.2.1).
 //!
 //! Cookie value: `v1.{expiry_unix}.{hmac_hex}`
 //! where hmac = HMAC-SHA256(SESSION_KEY, "v1.{expiry_unix}")
@@ -113,7 +113,11 @@ mod tests {
     use super::*;
 
     fn mgr() -> SessionManager {
-        SessionManager::new("test-access-key-0123456789", Duration::from_secs(3600), true)
+        SessionManager::new(
+            "test-access-key-0123456789",
+            Duration::from_secs(3600),
+            true,
+        )
     }
 
     #[test]
@@ -141,11 +145,7 @@ mod tests {
         let v = m.issue();
         // extend expiry without re-signing → mac no longer matches
         let parts: Vec<&str> = v.splitn(3, '.').collect();
-        let forged = format!(
-            "v1.{}.{}",
-            parts[1].parse::<u64>().unwrap() + 10,
-            parts[2]
-        );
+        let forged = format!("v1.{}.{}", parts[1].parse::<u64>().unwrap() + 10, parts[2]);
         assert!(!m.validate(&forged));
     }
 
@@ -193,9 +193,8 @@ mod tests {
         assert!(secure.contains("Secure"));
         assert!(secure.contains("Max-Age=3600"));
 
-        let insecure =
-            SessionManager::new("k-0123456789abcdef", Duration::from_secs(60), false)
-                .issue_set_cookie();
+        let insecure = SessionManager::new("k-0123456789abcdef", Duration::from_secs(60), false)
+            .issue_set_cookie();
         assert!(!insecure.contains("Secure"));
 
         let cleared = mgr().clear_set_cookie();

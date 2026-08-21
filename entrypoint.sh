@@ -1,6 +1,6 @@
 #!/bin/sh
 # aardbin entrypoint — ensures the bind-mounted data dir is writable by the
-# non-root `aardbin` user, then drops privileges (PRD §35.2 bind mount).
+# non-root `aardbin` user, then drops privileges (SPEC §35.2 bind mount).
 set -e
 
 BIN=/usr/local/bin/aardbin
