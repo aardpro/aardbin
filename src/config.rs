@@ -4,6 +4,9 @@ use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
 
+/// Maximum number of attachments allowed per record (SPEC §9).
+pub const MAX_ATTACHMENTS_PER_RECORD: usize = 20;
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub access_key: String,

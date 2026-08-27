@@ -19,6 +19,7 @@
       "js.yesterday": "yesterday",
       "js.exceeds_max": "exceeds max",
       "js.skipped": "skipped",
+      "js.too_many_attachments": "Too many attachments (max {0})",
     },
     zh: {
       "js.copied": "已复制",
@@ -31,12 +32,15 @@
       "js.yesterday": "昨天",
       "js.exceeds_max": "超过最大",
       "js.skipped": "已跳过",
+      "js.too_many_attachments": "附件数量过多（最多 {0} 个）",
     },
   };
   function t(key, ...args) {
     const val = I18N[LANG]?.[key] ?? I18N.en[key] ?? key;
     if (typeof val === "function") return val(...args);
-    return val;
+    if (args.length === 0) return val;
+    // Replace {0}, {1}, … placeholders with positional arguments.
+    return String(val).replace(/\{(\d+)\}/g, (_, i) => args[Number(i)] ?? "");
   }
 
   // ---------- toasts ----------
@@ -145,6 +149,12 @@
   if (dz && input) {
     const form = dz.closest("form");
     const maxBytes = Number(form?.dataset.maxAttachmentBytes || 0);
+    const maxCount = Number(form?.dataset.maxAttachments || 20);
+
+    // Independent accumulation array — the browser replaces input.files on
+    // every file-dialog confirmation, so we cannot rely on it as the source
+    // of truth for previously selected files.
+    let pendingFiles = [];
 
     function humanSize(bytes) {
       if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MB";
@@ -155,7 +165,7 @@
       const ul = document.getElementById("pending-files");
       if (!ul) return;
       ul.innerHTML = "";
-      for (const f of input.files) {
+      for (const f of pendingFiles) {
         const li = document.createElement("li");
         li.textContent = `📎 ${f.name} · ${humanSize(f.size)}`;
         li.className =
@@ -163,17 +173,24 @@
         ul.appendChild(li);
       }
     }
-    function addFiles(fileList) {
+    function syncInputFiles() {
       const dt = new DataTransfer();
-      for (const f of input.files) dt.items.add(f);
+      for (const f of pendingFiles) dt.items.add(f);
+      input.files = dt.files;
+    }
+    function addFiles(fileList) {
       for (const f of fileList) {
+        if (pendingFiles.length >= maxCount) {
+          toast(t("js.too_many_attachments", maxCount), "error");
+          break;
+        }
         if (maxBytes && f.size > maxBytes) {
           toast(`"${f.name}" ${t("js.exceeds_max")} ${humanSize(maxBytes)} — ${t("js.skipped")}`, "error");
           continue;
         }
-        dt.items.add(f);
+        pendingFiles.push(f);
       }
-      input.files = dt.files;
+      syncInputFiles();
       renderPending();
     }
 
@@ -191,6 +208,12 @@
       })
     );
     dz.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
-    input.addEventListener("change", renderPending);
+    // The browser replaces input.files when the file dialog closes, so we
+    // must funnel the change event through addFiles as well.  Resetting
+    // input.value ensures re-selecting the same file triggers change again.
+    input.addEventListener("change", () => {
+      addFiles(input.files);
+      input.value = "";
+    });
   }
 })();

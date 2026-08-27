@@ -17,6 +17,7 @@ use tokio_stream::StreamExt;
 use tokio_util::io::ReaderStream;
 use uuid::Uuid;
 
+use crate::config::MAX_ATTACHMENTS_PER_RECORD;
 use crate::db::AttachmentRow;
 use crate::files::{content_disposition, human_size, INLINE_WHITELIST};
 use crate::i18n::{self, Lang};
@@ -97,6 +98,7 @@ struct FormView {
     attachments: Vec<AttachmentView>,
     max_attachment_human: String,
     max_attachment_bytes: u64,
+    max_attachments: usize,
 }
 
 fn attachment_view(a: &AttachmentRow) -> AttachmentView {
@@ -384,6 +386,7 @@ pub async fn new_form(State(s): State<AppState>, headers: HeaderMap) -> Response
         attachments: vec![],
         max_attachment_human: human_size(s.cfg.max_attachment_bytes as i64),
         max_attachment_bytes: s.cfg.max_attachment_bytes,
+        max_attachments: MAX_ATTACHMENTS_PER_RECORD,
     };
     match s.renderer.render_lang(lang, "form.html", &view) {
         Ok(html) => Html(html).into_response(),
@@ -425,6 +428,7 @@ pub async fn parse_record_form(
     let mut content = String::new();
     let mut uploads: Vec<PendingUpload> = Vec::new();
     let mut total_bytes: u64 = 0;
+    let mut attachment_count: usize = 0;
 
     loop {
         let field = match multipart.next_field().await {
@@ -479,6 +483,17 @@ pub async fn parse_record_form(
                 };
                 if filename.is_empty() {
                     continue; // browsers send an empty file part when nothing selected
+                }
+                attachment_count += 1;
+                if attachment_count > MAX_ATTACHMENTS_PER_RECORD {
+                    cleanup_uploads(s, &uploads).await;
+                    return Err(err_response(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        format!(
+                            "Too many attachments (max {})",
+                            MAX_ATTACHMENTS_PER_RECORD
+                        ),
+                    ));
                 }
                 let declared = field.content_type().map(|c| c.to_string());
                 let (id, _tmp_path, mut tmp_file) = match s.files.begin_upload().await {
@@ -666,6 +681,7 @@ pub async fn edit_form(
         attachments: attachments.iter().map(attachment_view).collect(),
         max_attachment_human: human_size(s.cfg.max_attachment_bytes as i64),
         max_attachment_bytes: s.cfg.max_attachment_bytes,
+        max_attachments: MAX_ATTACHMENTS_PER_RECORD,
     };
     match s.renderer.render_lang(lang, "form.html", &view) {
         Ok(html) => Html(html).into_response(),
